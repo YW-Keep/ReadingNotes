@@ -1,5 +1,5 @@
-##重读swifter tips摘记
-###1.柯里化
+## 重读swifter tips摘记 
+### 1.柯里化
 swift是可以将方法进行柯里化的,类似如下代码
 
 ```swift
