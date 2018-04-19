@@ -188,3 +188,96 @@ myFalse.rawValue   // 1
 ```
 
 这里再提醒一句我们暂时无法为现有的非final(关键字可以用在class,func或者var前面修饰表示不允许进行继承或者重写)的class添加字面量表达式。（这句话好绕啊 原因是class协议里有一些required的初始化方法，而这些方法不能写在扩展中。） 最后 我想说的是字面量，表面上很强大，对缩短代码有很大的帮助，但是容易对阅读的人产生迷惑，到底有啥用等你开发吧！
+
+### 10.下标
+
+用下标取值是一种很方便的做法。但是要注意字典取到的值是Optional类型的，因为取到可能是没值的。（另外提一句，数组越界是直接奔溃的。） 这里要说下一种黑科技，就是自定义下标（不单单可以对自己的类型，对			Array Dictionay同样可以）。关键词就是subscript 代码如下
+
+```swift
+extension Array {
+    subscript(input: [Int]) -> ArraySlice<Element> {
+        get {
+            var result = ArraySlice<Element>()
+            for i in input {
+                assert(i < self.count, "Index out of range")
+                result.append(self[i])
+            }
+            return result
+        }
+        
+        set {
+            for (index,i) in input.enumerated() {
+                assert(i < self.count, "Index out of range")
+                self[i] = newValue[index]
+            }
+        }
+    }
+}
+var arr = [1,2,3,4,5]
+arr[[0,2,3]] = [-1,-3,-4]
+print(arr[[1,2]])
+
+```
+
+### 11.方法嵌套
+
+swift中方法终于是一等公民啦，我们可以将方法当做变量或者参数使用啦。那方法嵌套方法之类的完全没问题呀。这里可能会有个疑问为什么要这么做。这里举例两种试用场景其他的大家自己去想：1.方法很大，做方法拆分，但是其实这些拆分出来的方法也就这个方法内用到。2.隐藏实现。
+
+### 12.命名空间
+
+Objective-C在编译后会把所有的代码和引用的静态库编译成同一个域和二进制中。这回有个一个弊端一旦有同一个类名就会有编译冲突以及奔溃。
+
+而Swift中可以使用命名空间，命名空间不同的名字相同的类型是可以和平共处的。Swift的命名空间是基于module的也就是说同一个target里的类型名字还是不能相同的。使用的时候要加上空间名。（其实个人感觉还是挺麻烦的，没多大用。）
+
+### 13.typealias
+
+大家都知道，typealias主要是用于为已经存在的类型重新定义新名字，主要让代码更易读。但是要注意在给泛型重命名时只能也是泛型的名字。
+
+### 14.associatedtype
+
+swift 有个很吊的功能，就是可以使用associatedtype来作为类型占位符。让实现协议的类型来指定具体的类型。具体来看这段例子
+
+```swift
+protocol Food { }
+// 这里就用了食物的类型 占位符，如果不用的话 下面老虎吃肉必须判断是不是肉了不然报错。
+protocol Animal {
+    associatedtype F: Food
+    func eat(_ food: F)
+}
+
+struct Meat: Food { }
+struct Grass: Food { }
+
+struct Tiger: Animal {
+    func eat(_ food: Meat) {
+        print("eat \(food)")
+    }
+}
+
+let meat = Meat()
+Tiger().eat(meat)
+
+struct Sheep: Animal {
+    func eat(_ food: Grass) {
+        print("eat \(food)")
+    }
+}
+// 这里要注意，当有占位符后 这个协议不是一个独立的协议了 是一个泛型了所以不能这么用了。只能像下面那样使用了
+//func isDangerous(animal: Animal) -> Bool {
+//    return false
+//}
+func isDangerous<T: Animal>(animal: T) -> Bool {
+    if animal is Tiger {
+        return true
+    } else {
+        return false
+    }
+}
+
+isDangerous(animal: Tiger())
+isDangerous(animal: Sheep())
+```
+
+### 15.可变参数
+
+可变参数在swift中变得十分简单，只需要在参数后面加上… 就可以了,在方法中得到就是该参数的数组。但是其实它是有限制的。1.一个方法中只能有一个可变参数。2.可变参数的类型必须是相同的。
