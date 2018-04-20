@@ -281,3 +281,63 @@ isDangerous(animal: Sheep())
 ### 15.可变参数
 
 可变参数在swift中变得十分简单，只需要在参数后面加上… 就可以了,在方法中得到就是该参数的数组。但是其实它是有限制的。1.一个方法中只能有一个可变参数。2.可变参数的类型必须是相同的。
+
+### 16.初始化方法顺序
+
+swift对初始化的顺序很严格，要先初始化子类中的属性，然后再调用父类init方法，最后（如果需要）修改父类属性。当如你不需要修改父类属性的话，调用父类init方法也可以不写，系统会帮我们自动调用。（其实我还是建议写上清楚一些。）
+
+### 17.Designated,Convenience ,Required
+
+这里主要接着上一个初始化，聊一聊构造器了。Designated指定构造器，Convenience便利构造器。这里主要说下构造器的原则：1.指定构造器向上代理2.遍历构造器横向代理3.遍历构造器导致一个指定构造器被调用。 然后是构造器的继承规则：1.子类没有定义任何意义的构造器，将自动继承父类所有的构造器。2.父类指定构造器被实现（重写或者由于方式一），相应的便利构造器被自动继承。 最后聊一聊Required,这个关键词主要的作用是需要子类必须实现。主要的做用有2个：1.修饰指定构造器，那么依赖于它的便利构造器就可以一直使用了。2.修饰便利构造器（目的不让子类使用父类便利构造器。）。
+
+### 18.初始化返回nil
+
+如果遇到初始化可能失败的方法只需要在指定构造器init后面加上？就可以了。这样返回的就是可选值。
+
+### 19.static 和 class
+
+static 修饰方法，属性时其实是静态属性（便于理解可以理解为类属性），类方法，在Class 中可以使用class进行修饰也可以使用static修饰，效果一样。而枚举，结构体，甚至是协议中则需要使用static。结论是，任何时候使用static应该都是没有问题的。
+
+### 20.多类型和容器
+
+Swift 中常用的容器有三种分别是：Array、Dictionay和Set。他们都是泛型，即一个集合中只能放同一个类型的元素。
+
+那么怎么存储多类型呢。第一个方式做转化：
+
+```swift
+// Any 类型可以隐式转换
+let mixed: [Any] = [1, "two", 3]
+
+// 转换为 [NSObject]
+let objectArray = [1 as NSObject, "two" as NSObject, 3 as NSObject]
+```
+
+这种方式肯定不是一种很好的方式。第一，会在转化过程中造成部分信息的损失。第二使用时还要再转化一次。第三任意类型也危险，并不安全。
+
+第二个方式，用协议约束
+
+```Swift
+// CustomStringConvertible  是打印的那个协议description
+let mixed: [CustomStringConvertible] = [1, "two", 3]
+for obj in mixed {
+    print(obj.description)
+}
+```
+
+相对第一种，能明显安全很多，也不需要做过多的转化，但是丢失信息的问题还是没有解决。
+
+第三个方式，因为enum可以存贮值，所以我们可以把信息分装到enum中，例如：
+
+```Swift
+enum IntOrString {
+    case IntValue(Int)
+    case StringValue(String)
+}
+
+let mixed = [IntOrString.IntValue(1),
+             IntOrString.StringValue("two"),
+             IntOrString.IntValue(3)]
+// 去的时候可以用switch 判断。
+```
+
+这种方式相对合理一些，因为不会造成数据的丢失。所以多容器尽量使用这种方式吧。
