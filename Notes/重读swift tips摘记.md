@@ -341,3 +341,171 @@ let mixed = [IntOrString.IntValue(1),
 ```
 
 这种方式相对合理一些，因为不会造成数据的丢失。所以多容器尽量使用这种方式吧。
+
+### 21.default 参数
+
+swift 的方法 是可以有默认值的，这种方式很好用，再也不用像OC一样类似的方法写一堆了。
+
+### 22.正则表达式
+
+Swift 正则表达式可以用NSRegularExpression实现，具体代码如下：
+
+```swift
+struct RegexHelper {
+    let regex: NSRegularExpression
+    
+    init(_ pattern: String) throws {
+        try regex = NSRegularExpression(pattern: pattern,
+            options: .caseInsensitive)
+    }
+    
+    func match(_ input: String) -> Bool {
+        let matches = regex.matches(in: input,
+                    options: [],
+                    range: NSMakeRange(0, input.utf16.count))
+        return matches.count > 0
+    }
+}
+
+let mailPattern =
+"^([a-z0-9_\\.-]+)@([\\da-z\\.-]+)\\.([a-z\\.]{2,6})$"
+
+let matcher: RegexHelper
+do {
+    matcher = try RegexHelper(mailPattern)
+}
+
+let maybeMailAddress = "onev@onevcat.com"
+
+if matcher.match(maybeMailAddress) {
+    print("有效的邮箱地址")
+}
+// 输出:
+// 有效的邮箱地址
+```
+
+前面说过可以自定义操作符这里就可以吧这个做为一个操作符自定义：
+
+```Swift
+precedencegroup MatchPrecedence {
+    associativity: none
+    higherThan: DefaultPrecedence
+}
+
+infix operator =~: MatchPrecedence
+
+func =~(lhs: String, rhs: String) -> Bool {
+    do {
+        return try RegexHelper(rhs).match(lhs)
+    } catch _ {
+        return false
+    }
+}
+
+if "onev@onevcat.com" =~
+    "^([a-z0-9_\\.-]+)@([\\da-z\\.-]+)\\.([a-z\\.]{2,6})$" {
+        print("有效的邮箱地址")
+}
+// 输出:
+// 有效的邮箱地址
+```
+
+### 23.模式匹配
+
+虽然Swift中没有内置的正则表达支持，但是有个相似的特性那就是模式匹配。Swift的switch就是使用了~=操作符进行模式匹配，case指定的模式作为左参数输入，而等待匹配的被switch的元素作为操作符的又参数。所以我们可以重载~=操作符来做正则表达式：
+
+```Swift
+
+func ~=(pattern: NSRegularExpression, input: String) -> Bool {
+    return pattern.numberOfMatches(in: input,
+        options: [],
+        range: NSRange(location: 0, length: input.count)) > 0
+}
+
+prefix operator ~/
+
+prefix func ~/(pattern: String) throws -> NSRegularExpression {
+    return try NSRegularExpression(pattern: pattern, options: [])
+}
+
+let contact = ("http://onevcat.com", "onev@onevcat.com")
+
+let mailRegex: NSRegularExpression
+let siteRegex: NSRegularExpression
+
+mailRegex = try ~/"^([a-z0-9_\\.-]+)@([\\da-z\\.-]+)\\.([a-z\\.]{2,6})$"
+siteRegex = try ~/"^(https?:\\/\\/)?([\\da-z\\.-]+)\\.([a-z\\.]{2,6})([\\/\\w \\.-]*)*\\/?$"
+
+switch contact {
+    case (siteRegex, mailRegex): print("同时拥有有效的网站和邮箱")
+    case (_, mailRegex): print("只拥有有效的邮箱")
+    case (siteRegex, _): print("只拥有有效的网站")
+    default: print("嘛都没有")
+}
+
+// 输出
+// 同时拥有网站和邮箱
+```
+
+### 24. …与..<
+
+其实我们经常把这个用在数组的获取上，其实仔细看它的定义，它其实是泛型的。这个操作符还有一个接受 Comparable 的输入，并返回 ClosedInterval 或 HalfOpenInterval 的重载。比如
+
+```Swift
+let test = "helLo"
+let interval = "a"..."z"
+for c in test {
+    if !interval.contains(String(c)) {
+        print("\(c) 不是小写字母")
+    }
+}
+```
+
+### 25.AnyClass，元类型和 .self
+
+其实AnyClass 就是，一个typealias的定义,定义如下：
+
+```swift
+public typealias AnyClass = Swift.AnyObject.Type
+```
+
+其实.tpye表示的是这个类型的类型。获取方式也很简单，即在类型后面加上.self就可以了。如果你在实例后面加上.self获取的就是实例本身。
+
+```swift
+class A {
+}
+// 获取类的类名
+let typeA = A.self
+
+let myA = A()
+// 这样获取是本身
+let selfA = myA.self
+// 获取实例的类名
+let typeB = type(of: myA)
+
+```
+
+如果是协议的话可以用.Protocol获取协议元 用法与.Type类似。
+
+其实这东西用处还是很多的，举例子工厂化创建类似：
+
+```swift
+import UIKit
+class MusicViewController: UIViewController {}
+
+class AlbumViewController: UIViewController {}
+
+let usingVCTypes: [AnyClass] = [MusicViewController.self,
+    AlbumViewController.self]
+
+func setupViewControllers(_ vcTypes: [AnyClass]) {
+    for vcType in vcTypes {
+        if vcType is UIViewController.Type {
+            let vc = (vcType as! UIViewController.Type).init()
+            print(vc)
+        }
+        
+    }
+}
+```
+
