@@ -19,3 +19,35 @@ kCFRunLoopDefaultMode: App的默认 Mode，通常主线程是在这个 Mode 下�
 UITrackingRunLoopMode: 界面跟踪 Mode，用于 ScrollView 追踪触摸滑动，保证界面滑动时不受其他 Mode 影响。
 kCFRunLoopCommonModes: 其实是一个占位的model，可以理解为复合model
 #### CFRunLoopSourceRef
+
+顾名思义，这是一个事件产生的地方。Source主要有2个：
+
+1.scource0 只包含一个指针回调，所以它不能唤醒runLoop,当然你可以手动唤醒RunLoop(CFRunLoopWakeUp(runloop)方法)
+
+2.scource1 不但包含一个指针回调，还包含一个mach_port,mach_port可以通过内核间的通讯获取消息，从而主动唤起RunLoop。
+
+而指针回调就是处理事情的回调。
+
+#### CFRunLoopTimerRef
+
+这个是时间触发器，可以与NSTimer完美桥接，它主要包含一个时长与一个回调的函数指针，当加入到runloop中时，runloop会注册对应的时间，时间到了runloop会被唤醒执行那个回调。
+
+#### CFRunLoopObserverRef
+
+它其实就是一个事件的观察者。主要的事件有下面几种
+
+```c
+typedef CF_OPTIONS(CFOptionFlags, CFRunLoopActivity) {
+    kCFRunLoopEntry         = (1UL << 0), // 即将进入Loop
+    kCFRunLoopBeforeTimers  = (1UL << 1), // 即将处理 Timer
+    kCFRunLoopBeforeSources = (1UL << 2), // 即将处理 Source
+    kCFRunLoopBeforeWaiting = (1UL << 5), // 即将进入休眠
+    kCFRunLoopAfterWaiting  = (1UL << 6), // 刚从休眠中唤醒
+    kCFRunLoopExit          = (1UL << 7), // 即将退出Loop
+};
+```
+
+### 3.runloop内部逻辑是怎么样的
+
+
+
