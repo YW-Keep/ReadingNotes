@@ -49,5 +49,6 @@ typedef CF_OPTIONS(CFOptionFlags, CFRunLoopActivity) {
 
 ### 3.runloop内部逻辑是怎么样的
 
+![RunLoop_1](https://raw.githubusercontent.com/YW-Keep/ReadingNotes/master/image/RunLoop/RunLoop_1.png)
 
-
+这张图就能比较直观的看到runloop的整个过程。
