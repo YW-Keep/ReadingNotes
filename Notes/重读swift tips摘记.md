@@ -509,3 +509,168 @@ func setupViewControllers(_ vcTypes: [AnyClass]) {
 }
 ```
 
+### 26.协议和类中的Self
+
+协议和类方法中出现Self 表示的是这个类挥着实现协议的类,所以我们在地方不能直接用实例来映射它（比如其他实现协议的类，子类也会用到），这样会编译报错。一般好的做法是，用type(of：)做一次转换。（有点绕，看下下面的例子吧）
+
+```Swift
+protocol Copyable {
+    func copy() -> Self
+}
+
+class MyClass: Copyable {
+    
+    var num = 1
+    
+    func copy() -> Self {
+        // 这里如果用MyClass().init()就会编译报错
+        // 这样写的好处 还有子类也可以使用copy 方法了
+        let result = type(of: self).init()
+        result.num = num
+        return result
+    }
+    
+    required init() {
+        
+    }
+}
+
+let object = MyClass()
+object.num = 100
+
+let newObject = object.copy()
+object.num = 1
+
+print(object.num)     // 1
+print(newObject.num)  // 100
+```
+
+### 27. 动态类型和多方法
+
+Swift 与OC是不同的， swift不能根据对象在动态时的类型，进行合适的重载，而Object-C可以，所以说Object-C是一门动态语言，而swift是一门静态语言。但是可以通过类型判断来完成我们需要的重载：
+
+```swift
+class Pet {}
+class Cat: Pet {}
+class Dog: Pet {}
+
+func printPet(_ pet: Pet) {
+    print("Pet")
+}
+
+func printPet(_ cat: Cat) {
+    print("Meow")
+}
+
+func printPet(_ dog: Dog) {
+    print("Bark")
+}
+
+printPet(Cat()) // Meow
+printPet(Dog()) // Bark
+printPet(Pet()) // Pet
+
+func printThem(_ pet: Pet, _ cat: Cat) {
+    printPet(pet)
+    printPet(cat)
+}
+
+printThem(Dog(), Cat())
+
+// 输出：
+// Pet
+// Meow
+
+func printThemAgain(_ pet: Pet, _ cat: Cat) {
+    if let aCat = pet as? Cat {
+        printPet(aCat)
+    } else if let aDog = pet as? Dog {
+        printPet(aDog)
+    }
+    printPet(cat)
+}
+
+printThemAgain(Dog(), Cat())
+// 输出：
+// Bark
+// Meow
+```
+
+```objective-c
+// OC 代码 
+@interface ClassA : NSObject
+
+- (void)printThings;
+
+@end
+@implementation ClassA
+
+- (void)printThings {
+    NSLog(@"A");
+}
+
+@end
+
+@interface ClassB : ClassA
+
+- (void)printThings;
+
+@end
+
+@implementation ClassB
+
+- (void)printThings {
+    NSLog(@"B");
+}
+
+- (void)print:(ClassA *) class {
+    [class printThings];
+}
+// 打印出来是 a 和 b 
+ClassA * a = [ClassA new];
+[self print:a];
+ClassA * b = [ClassB new];
+[self print:b];
+@end
+```
+
+### 28.属性观察
+
+Swift中的属性观察很简单，只要实现willSet或者DidSet 即可，分别会有newValue 和oldValue表示新值和旧值。另外**初始化方法对属性的设定，以及在willSet或者DidSet中对属性的再次设定都不会再次触发属性观察。**另外，在同一个类型中，属性观察与计算属性是不能共存的。计算属性可以通过在set方法中处理达到相应的效果，当然如果不能设置，可以通过继承的方法重写属性来达到设置willSet或者DidSet方法。
+
+```Swift
+class A {
+    var number :Int {
+        get {
+            print("get")
+            return 1
+        }
+        
+        set {print("set")}
+    }
+}
+
+class B: A {
+    override var number: Int {
+        willSet {print("willSet")}
+        didSet {print("didSet")}
+    }
+}
+
+let b = B()
+b.number = 0
+
+// 输出
+// get
+// willSet
+// set
+// didSet
+```
+
+### 29.final
+
+final关键词主要用在class,func 或者var 前，表示不允许对改内容进行继承或者重写。那么在什么情况下会用final呢：1.权限控制 2.类或者方法的功能确实已经完备了 3.子类继承或者修改是一件很危险的事情。4.为了父类中的某些代码一定会被执行。5.性能考虑（不建议）
+
+### 30.lazy 修饰符和lazy方法
+
+Object-C中有一个叫做懒加载的东西，主要是在运用的时候在创建复制。Swift中也有，就是lazy 修饰一个属性。但是要注意lazy修饰只能修饰var,而且还要注意要显式的指定属性类型。Swift中的lazy还可以用到map、filter这类方法中，起到一个延迟处理的用处。（在遍历的或者用的时候再执行map、filter内的代码）
