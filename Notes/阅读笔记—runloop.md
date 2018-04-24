@@ -116,7 +116,7 @@ CADisplayLink 是一个和屏幕刷新率一致的定时器（但实际实现原
 
 NSURLConnectionLoader 中的 RunLoop 通过一些基于 mach port 的 Source 接收来自底层 CFSocket 的通知。当收到通知后，其会在合适的时机向 CFMultiplexerSource 等 Source0 发送通知，同时唤醒 Delegate 线程的 RunLoop 来让其处理这些通知。CFMultiplexerSource 会在 Delegate 线程的 RunLoop 对 Delegate 执行实际的回调。
 
-![RunLoop_network](/Users/tang/Desktop/ReadingNotes/image/RunLoop/RunLoop_network.png)
+![RunLoop_network](https://raw.githubusercontent.com/YW-Keep/ReadingNotes/master/image/RunLoop/RunLoop_network.png)
 
  ### 12.RunLoop平时有哪些应用
 
