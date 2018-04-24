@@ -674,3 +674,167 @@ final关键词主要用在class,func 或者var 前，表示不允许对改内容
 ### 30.lazy 修饰符和lazy方法
 
 Object-C中有一个叫做懒加载的东西，主要是在运用的时候在创建复制。Swift中也有，就是lazy 修饰一个属性。但是要注意lazy修饰只能修饰var,而且还要注意要显式的指定属性类型。Swift中的lazy还可以用到map、filter这类方法中，起到一个延迟处理的用处。（在遍历的或者用的时候再执行map、filter内的代码）
+
+### 31.Reflection 和 Mirror
+
+Reflection（反射），这是一种在运行时检测、访问或者修改类型的行为的特征。Objective-C中，我们基本不会提起这个，因为Objective-C中的运行时比一般的反射还要强大和灵活。比如通过字符串生成类或者方法，然后生成对象或者调用都是反射的一种表现形式。Swift抛开Objective-C的运行时部分，还是一些关于反射的内容的。这里主要要介绍的就是Mirror，这是一个可以获取类型信息的一个类。具体请看下面
+
+```Swift
+
+struct Person {
+    let name: String
+    let age: Int
+}
+
+let xiaoMing = Person(name: "XiaoMing", age: 16)
+let r = Mirror(reflecting: xiaoMing) // r 是 MirrorType
+
+print("xiaoMing 是 \(r.displayStyle!)")
+
+print("属性个数:\(r.children.count)")
+
+for child in r.children {
+    print("属性名:\(String(describing: child.label))，值:\(child.value)")
+}
+
+//for i in r.children.startIndex..<r.children.endIndex {
+//    print("属性名:\(r.children[i].0!)，值:\(r.children[i].1)")
+//}
+
+// 输出：
+// xiaoMing 是 Struct
+// 属性个数:2
+// 属性名:name，值:XiaoMing
+// 属性名:age，值:16
+
+dump(xiaoMing)
+// 输出：
+// ▿ Person
+//  - name: XiaoMing
+//  - age: 16
+
+func valueFrom(_ object: Any, key: String) -> Any? {
+    let mirror = Mirror(reflecting: object)
+    
+    for child in mirror.children {
+        let (targetKey, targetMirror) = (child.label, child.value)
+        if key == targetKey {
+            return targetMirror
+        }
+    }
+    
+    return nil
+}
+
+// 接上面的 xiaoMing
+if let name = valueFrom(xiaoMing, key: "name") as? String {
+    print("通过 key 得到值: \(name)")
+}
+
+// 输出：
+// 通过 key 得到值: XiaoMing
+```
+
+这里可以实现KVC类似的事情。但是swift的反射不是很强，只能做读取，不能设定，另外这一块因为文档并未完全公开，改动概率大，慎用！
+
+### 32.隐式解包Optional
+
+其实隐式解包与普通的Optional值并没有什么区别，只是在对类变量成员访问的时候编译器会自动为我们在后面插入解包符号！。隐式解包是一个历史原因引起的：因为Objective-C中Cocoa的所有类型变量都是可以指向nil的，所以Cocoa 的API中没有区分哪些会返回nil，所以转成swift方法的时候全部是Optional，那有些是确定不会nil的怎么办呢（都要判断很麻烦）所以隐式解包就出来了。 这里另外提一句，最好少用，尽量不用因为对nil解包是报错的，所以滥用万一出现没值的情况容易崩溃。
+
+### 33.多重Optional
+
+其实仔细想想？不过是Optional类型的语法糖而已，而Optional其实就是一个枚举而已。
+
+```swift
+public enum Optional<Wrapped> : ExpressibleByNilLiteral {
+
+    /// The absence of a value.
+    ///
+    /// In code, the absence of a value is typically written using the `nil`
+    /// literal rather than the explicit `.none` enumeration case.
+    case none
+
+    /// The presence of a value, stored as `Wrapped`.
+    case some(Wrapped)
+    // ...下面还有好多方法定义 有兴趣的可以自己去看
+}
+```
+
+这里其实就一个嵌套的问题，其实也很好理解，一个盒子装了一个nil，另外一个盒子装了这个盒子，那么这个盒子就不是nil。可能表述有点绕，看下下面的代码：
+
+```swift
+
+var string: String? = "string"
+var anotherString: String?? = string
+
+var literalOptional: String?? = "string"
+
+var aNil: String? = nil
+
+var anotherNil: String?? = aNil
+var literalNil: String?? = nil
+
+if anotherNil != nil {
+    // This will output.
+    print("anotherNil")
+}
+
+if literalNil != nil {
+    // This will not output.
+    print("literalNil")
+}
+
+```
+
+### 34.Optional Map
+
+其实Optional 也定义了一套map 这类的方法，返回的也是可选值。这主要是一种函数式编程的思想。
+
+### 35.Protocal Extension
+
+swift 中标准库的功能基本都是基于protocol来实现的。
+
+协议的扩展有如下规则，如果类型推断得到是实现协议的类型，那么类型中的实现将被调用，如果类型中没有实现，则协议扩展中的默认实现将被调用。如果类型推断是协议，那么如果在协议中有定义且类型中有实现那么调用类型中的实现，如果类型中没有实现那么调用协议扩展中的实现。如果协议中未定义，则直接调用扩展中的实现。（协议扩展方式其实可以实现可选协议）下面是个例子：
+
+```swift
+protocol A2 {
+    func method1() -> String
+}
+
+extension A2 {
+    func method1() -> String {
+        return "hi"
+    }
+    
+    func method2() -> String {
+        return "hi"
+    }
+}
+
+struct B2: A2 {
+    func method1() -> String {
+        return "hello"
+    }
+    
+    func method2() -> String {
+        return "hello"
+    }
+}
+
+let b2 = B2()
+
+b2.method1()
+// hello
+b2.method2()
+// hello
+
+let a2 = b2 as A2
+
+a2.method1()
+// hello
+
+a2.method2()
+// hi
+
+```
+
