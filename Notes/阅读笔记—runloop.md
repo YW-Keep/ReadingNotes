@@ -125,3 +125,12 @@ NSURLConnectionLoader 中的 RunLoop 通过一些基于 mach port 的 Source 接
 2.AFNetWorking,新启了一个线程，然后加入一个NSMachPort（通常情况下，调用者需要持有这个 NSMachPort (mach_port) 并在外部线程通过这个 port 发送消息到 loop 内），防止其退出。之后需要这个线程时，只需要通过调用 [NSObject performSelector:onThread:..] 将这个任务扔到了后台线程的 RunLoop 中。
 
 Tips: Mach 已经是基本最底层的框架了，本身提供的API也十分有限，而且苹果也不鼓励。在 Mach 中，所有的东西都是通过自己的对象实现的，进程、线程和虚拟内存都被称为”对象”。和其他架构不同， Mach 的对象间不能直接调用，只能通过消息传递的方式实现对象间的通信。”消息”是 Mach 中最基础的概念，消息在两个端口 (port) 之间传递，这就是 Mach 的 IPC (进程间通信) 的核心。可以扩展
+
+主要阅读资料
+
+1.[深入理解runloop](https://blog.ibireme.com/2015/05/18/runloop/)ps:大部分内容来自于此 本文主要是阅读该文章的摘记
+
+2.[官方开源代码](https://opensource.apple.com/tarballs/CF/)
+
+3.[runloop线下分享视频](http://v.youku.com/v_show/id_XODgxODkzODI0.html)
+
