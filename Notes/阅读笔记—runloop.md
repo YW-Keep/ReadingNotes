@@ -51,4 +51,12 @@ typedef CF_OPTIONS(CFOptionFlags, CFRunLoopActivity) {
 
 ![RunLoop_1](https://raw.githubusercontent.com/YW-Keep/ReadingNotes/master/image/RunLoop/RunLoop_1.png)
 
-这张图就能比较直观的看到runloop的整个过程。
+这张图就能比较直观的看到runloop的整个过程。因为整个代码是C写的这里就不贴了。想看的可以在[这里下载](https://opensource.apple.com/tarballs/CF/)
+
+### runloop内部是怎么实现的？
+
+由上面的图可以看出，其主要的问题是在7,就是runloop是怎么休眠，又是怎么被唤醒的。其实主要是通过Mach层来实现的。Mach层是最底层的架构，是XNU内核的内环，其作为一个微内核，仅提供如处理器调度、IPC (进程间通信)等非常少量的基础服务。
+
+“消息”是Mach中最基础的概念，消息在两个端口之间传递（之前提到过soucre1是有个mach port 的），这就是Mach 的IPC(进程间通信)的核心。
+
+为了实现消息的发送和接收，mach_msg() 函数实际上是调用了一个 Mach 陷阱 (trap)，即函数mach_msg_trap()，陷阱这个概念在 Mach 中等同于系统调用。当你在用户态调用 mach_msg_trap() 时会触发陷阱机制，切换到内核态；内核态中内核实现的 mach_msg() 函数会完成实际的工作，如下图：
