@@ -1,4 +1,3 @@
-## 重读swifter tips摘记 
 ## Swift中的新元素
 
 ### 1.柯里化
@@ -836,5 +835,71 @@ a2.method1()
 a2.method2()
 // hi
 
+```
+
+### 36.where和模式匹配
+
+where在swift中其实是一个很强大的关键词，但是往往会被忽略。这里主要讲讲这个关键词的用法。
+
+首先在switch中可以作为条件判断：
+
+```Swift
+let name = ["王小二","张三","李四","王二小"]
+
+name.forEach {
+    switch $0 {
+    case let x where x.hasPrefix("王"):
+        print("\(x)是笔者本家")
+    default:
+        print("你好，\($0)")
+    }
+}
+// 输出：
+// 王小二是笔者本家
+// 你好，张三
+// 你好，李四
+// 王二小是笔者本家
+```
+
+在for in 中也可以做类似的条件限制
+
+```swift
+let num: [Int?] = [48, 99, nil]
+
+let n = num.flatMap {$0}
+for score in n where score > 60 {
+    print("及格啦 - \(score)")
+}
+// 输出：
+// 及格啦 - Optional(99)
+```
+
+而在swift3 中if语句中不再使用where语句了：
+
+```swift
+num.forEach {
+    if let score = $0, score > 60 {
+        print("及格啦 - \(score)")
+    } else {
+        print(":(")
+    }
+}
+// 输出：
+// :(
+// 及格啦 - 99
+// :(
+```
+
+其实还有一种情形会是使用where，就是在泛型中想要对方法的类型进行限定的时候，比如Array的排序，这里就不再举例了。
+
+### 37.enum嵌套
+
+像表达链表等问题的时候，可以用enum嵌套 类似：
+
+```swift
+indirect enum LinkedList<Element: Comparable> {
+    case empty
+    case node(Element, LinkedList<Element>)
+}
 ```
 

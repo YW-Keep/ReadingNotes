@@ -102,13 +102,13 @@ CADisplayLink 是一个和屏幕刷新率一致的定时器（但实际实现原
 
 当调用 NSObject 的 performSelecter:afterDelay: 后，实际上其内部会创建一个 Timer 并添加到当前线程的 RunLoop 中。所以如果当前线程没有 RunLoop，则这个方法会失效。
 
-### 10.RunLoop与GCD有啥关系
+### 10.RunLoop与GCD有啥关系？
 
 协作关系吧，  GCD 提供的某些接口也用到了 RunLoop， 例如 dispatch_async()。
 
 当调用 dispatch_async(dispatch_get_main_queue(), block) 时，libDispatch 会向主线程的 RunLoop 发送消息，RunLoop会被唤醒，并从消息中取得这个 block，并在回调 __CFRUNLOOP_IS_SERVICING_THE_MAIN_DISPATCH_QUEUE__() 里执行这个 block。但这个逻辑仅限于 dispatch 到主线程，dispatch 到其他线程仍然是由 libDispatch 处理的。
 
-### 11.RunLoop与NSURLConnection有啥关系
+### 11.RunLoop与NSURLConnection有啥关系？
 
 通常使用 NSURLConnection 时，你会传入一个 Delegate，当调用了 [connection start] 后，这个 Delegate 就会不停收到事件回调。实际上，start 这个函数的内部会会获取 CurrentRunLoop，然后在其中的 DefaultMode 添加了4个 Source0 (即需要手动触发的Source)。CFMultiplexerSource 是负责各种 Delegate 回调的，CFHTTPCookieStorage 是处理各种 Cookie 的。
 
@@ -118,7 +118,7 @@ NSURLConnectionLoader 中的 RunLoop 通过一些基于 mach port 的 Source 接
 
 ![RunLoop_network](https://raw.githubusercontent.com/YW-Keep/ReadingNotes/master/image/RunLoop/RunLoop_network.png)
 
- ### 12.RunLoop平时有哪些应用
+ ### 12.RunLoop平时有哪些应用？
 
 1.滑动时候修改model类型，从来可以在滑动时计时器也正常。
 
