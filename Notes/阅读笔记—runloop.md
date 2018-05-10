@@ -18,6 +18,28 @@ model种类很多，不同的model功能也不相同，很多我们平时也遇�
 kCFRunLoopDefaultMode: App的默认 Mode，通常主线程是在这个 Mode 下运行的。
 UITrackingRunLoopMode: 界面跟踪 Mode，用于 ScrollView 追踪触摸滑动，保证界面滑动时不受其他 Mode 影响。
 kCFRunLoopCommonModes: 其实是一个占位的model，可以理解为复合model
+
+```C
+struct __CFRunLoopMode {
+    CFStringRef _name;            // Mode Name, 例如 @"kCFRunLoopDefaultMode"
+    CFMutableSetRef _sources0;    // Set
+    CFMutableSetRef _sources1;    // Set
+    CFMutableArrayRef _observers; // Array
+    CFMutableArrayRef _timers;    // Array
+    ...
+};
+ 
+struct __CFRunLoop {
+    CFMutableSetRef _commonModes;     // Set
+    CFMutableSetRef _commonModeItems; // Set<Source/Observer/Timer>
+    CFRunLoopModeRef _currentMode;    // Current Runloop Mode
+    CFMutableSetRef _modes;           // Set
+    ...
+};
+```
+
+看这段代码，稍微解释下kCFRunLoopCommonModes，其实当你把一个item加入到NSRunLoopCommonMode中时，他会加入到_commonModeItems集合中。然后标记为common的model在runloop中model发生替换时自动读取_commonModeItems中的所有items加入到要进行运行的model中。
+
 #### CFRunLoopSourceRef
 
 顾名思义，这是一个事件产生的地方。Source主要有2个：
@@ -118,7 +140,7 @@ NSURLConnectionLoader 中的 RunLoop 通过一些基于 mach port 的 Source 接
 
 ![RunLoop_network](https://raw.githubusercontent.com/YW-Keep/ReadingNotes/master/image/RunLoop/RunLoop_network.png)
 
- ### 12.RunLoop平时有哪些应用？
+ ### 12.RunLoop平时有哪些应用
 
 1.滑动时候修改model类型，从来可以在滑动时计时器也正常。
 
