@@ -562,3 +562,215 @@ func loadView() {
 ```
 
 其实也不需要用自定定义的local，用do这个关键词就可以了。
+
+### 21.判等
+
+在Object中判等一般使用isEqual: 方法。这个方法在很多类是需要重写的，如果不重写则会默认使用NSObject中的版本，那就是Objective-C的==判等（就是判断两个对象是否指向同一块内存地址）。
+
+而Swift中的== 与Objective-C中的是不一样的 ，他是一个操作符的声明。可以实现Equatable重载操作符来实现各种判等（感觉与Objective-C中的isEqual：有些相近）。另外Swift的基本类型都重载了自己的==。而对于NSObject == 没有重载会调用isEqual：()方法，所以用==重载和 isEqual:是一样的。
+
+另外Swift中判断指针用的是另外一个操作符：===
+
+### 22.哈希
+
+Swift中提供一个Hashable的协议，这个协议可以给该类型提供哈希支持。Swift的原生Dictionary中，key一定是要实现了Hashable协议的类型，而像Int或者String这样的基础类，已经实现了这个协议，因此可以做为key来使用。（可以通过hashValue查看。）
+
+Objective-C也有一个-hash方法，重写isEqual的时候一般也要重写该方法。而在Swift中，NSObject也默认实现了Hashble，和判等一样，当访问hashValue时候会返回对应的 -hash值。
+
+### 23.类簇
+
+类簇 (class cluster) 确实是 Cocoa 框架中广泛使用的设计模式之一。简单来说类簇就是使用一个统一的公共的类来订制单一的接口，然后在表面之下对应若干个私有类进行实现的方式。这么做最大的好处是避免公开很多子类造成混乱，一个最典型的例子是 NSNumber。
+
+Swift可以用工厂的方式来实现，下面有个酒的例子：
+
+```Swift
+class Drinking {
+    typealias LiquidColor = UIColor
+    var color: LiquidColor {
+        return .clear
+    }
+    
+    class func drinking(name: String) -> Drinking {
+        var drinking: Drinking
+        switch name {
+        case "Coke":
+            drinking = Coke()
+        case "Beer":
+            drinking = Beer()
+        default:
+            drinking = Drinking()
+        }
+        
+        return drinking
+    }
+}
+
+class Coke: Drinking {
+    override var color: LiquidColor {
+        return .black
+    }
+}
+
+class Beer: Drinking {
+    override var color: LiquidColor {
+        return .yellow
+    }
+}
+
+let coke = Drinking.drinking(name: "Coke")
+coke.color // Black
+
+let beer = Drinking.drinking(name: "Beer")
+beer.color // Yellow
+
+let cokeClass = NSStringFromClass(type(of: coke)) //Coke
+let beerClass = NSStringFromClass(type(of: beer)) //Beer
+```
+
+### 24.调用C动态库
+
+因为Objective-C是 C 的超集，因此在以前我们可以无缝地访问 C 的内容，只需要指定依赖并且导入头文件就可以了。但是骄傲的 Swift 的目的之一就是甩开 C 的历史包袱，所以现在在 Swift 中直接使用 C 代码或者 C 的库是不可能的。
+
+那么问题来了 真的要用C某个库里的东西怎么办。其实办法还是有的，那就是桥接 Objective-C 就可以了。当然你也可以用Swift实现一遍库，造轮子。这边多说一句其实很多东西已经有Swift版本了，你也可以用别人造的轮子，不过建议还是用C的库，毕竟它已经经过了时间的考验了。
+
+### 25.输出格式化
+
+与Objective-C不同Swift不需要用占位符进行格式化输出，直接拼接就可以了，但是这样往往也会有弊端，例如在输出固定几位小数的时候，只能用string去转了。
+
+```Swift
+let a = 3;
+let b = 1.234567  // 我们在这里不去区分 float 和 Double 了
+let c = "Hello"
+print("int:\(a) double:\(b) string:\(c)")
+// 输出：
+// int:3 double:1.234567 string:Hello
+
+let format = String(format:"%.2f",b)
+print("double:\(format)")
+// 输出：
+// double:1.23
+
+extension Double {
+    func format(_ f: String) -> String {
+        return String(format: "%\(f)f", self)
+    }
+}
+
+let f = ".2"
+print("double:\(b.format(f))")
+```
+
+### 26.Options
+
+Objective-C中的Options,确切的说是NS_OPTIONS，其实是枚举的一种大概的样式就是这样：
+
+```objective-c
+typedef NS_OPTIONS(NSUInteger, UIViewAnimationOptions) {
+    UIViewAnimationOptionLayoutSubviews            = 1 <<  0,
+    UIViewAnimationOptionAllowUserInteraction      = 1 <<  1,
+    UIViewAnimationOptionBeginFromCurrentState     = 1 <<  2,
+
+    //...
+
+    UIViewAnimationOptionTransitionFlipFromBottom  = 7 << 20,
+}
+[UIView animateWithDuration:0.3
+                      delay:0.0
+                    options:UIViewAnimationOptionCurveEaseIn |
+                            UIViewAnimationOptionAllowUserInteraction
+                 animations:^{
+    // ...
+} completion:nil];
+```
+
+但是我们都知道，其实Swift中enum与Objective-C的已经是两个概念了（即原来的NS_ENUM对应enum）。 而NS_OPTIONS在Swift中其实是没有原生类型定义的，用的是满足OptionSetType协议的struct。使用和创建大概是这样的：
+
+```swift
+UIView.animate(withDuration: 0.3,
+    delay: 0.0,
+    options: [.curveEaseIn, .allowUserInteraction],
+    animations: {},
+    completion: nil)
+
+struct YourOption: OptionSet {
+    let rawValue: UInt
+    static let none = YourOption(rawValue: 0)
+    static let option1 = YourOption(rawValue: 1)
+    static let option2 = YourOption(rawValue: 1 << 1)
+    //...
+}
+
+YourOption.option1
+
+[YourOption.option1, YourOption.option2]
+```
+
+### 27.数组 enumerate
+
+在使用数组时候常常需要在枚举数组内元素同事也需要下标索引，在Objective-C中常用的是enumerateObjectsUsingBlock：这个方法。其实swift中有更好的方法，那就是enumerated方法，它可以快速的举某个数组的 EnumerateGenerator，它的元素是同时包含了元素下标索引以及元素本身的多元组。（其实这里也是一个遍历的过程，如果在算法中对时间要求较高还是遍历数组去取值比较快。）
+
+### 28.类型编码@encode
+
+在 Objective-C 中 @encode 使用起来很简单，通过传入一个类型，我们就可以获取代表这个类型的编码 C 字符串:
+
+```Objective-c
+char *typeChar1 = @encode(int32_t);
+char *typeChar2 = @encode(NSArray);
+// typeChar1 = "i", typeChar2 = "{NSArray=#}
+```
+
+这个关键字最常用的地方是在 Objective-C 运行时的消息发送机制中，在传递参数时，由于类型信息的缺失，需要类型编码进行辅助以保证类型信息也能够被传递。
+
+因为swift使用元类型来处理类型，并且在运行时保留了这些类型的信息，所以 Swift 并没有必要保留这个关键字。我们现在不能获取任意类型的类型编码了，但是在 Cocoa 中我们还是可以通过 NSValue 的 objcType 属性来获取对应值的类型指针。
+
+```swift
+let int: Int = 0
+let float: Float = 0.0
+let double: Double = 0.0
+
+let intNumber: NSNumber = int as NSNumber
+let floatNumber: NSNumber = float as NSNumber
+let doubleNumber: NSNumber = double as NSNumber
+
+String(validatingUTF8: intNumber.objCType)
+String(validatingUTF8: floatNumber.objCType)
+String(validatingUTF8: doubleNumber.objCType)
+
+// 结果分别为：
+// {Some "q"}
+// {Some "f"}
+// {Some "d"}
+// 注意，fromCString 返回的是 `String?`
+
+
+let p = NSValue(cgPoint: CGPoint(x: 3, y: 3))
+String(validatingUTF8: p.objCType)
+// {Some "{CGPoint=dd}"}
+
+let t = NSValue(cgAffineTransform: .identity)
+String(validatingUTF8: t.objCType)
+// {Some "{CGAffineTransform=dddddd}"}
+```
+
+### 29.C 代码调用和@asmname
+
+如果我们导入了Darwin的C库的话，我们就可以在 Swift 中无缝地使用Darwin中定义的C函数了。我们平时开发的时候其实是不需要导入的因为UIKit或者Cocoa框架是导入了Foundation框架的。而Foundation框架包含了Darwin的导入。这里有一点要说明，在导入Darwin时，Swift为我们做了类型的自动转换对应。而用其他的第三方C代码，就需要桥接了。其实还有个方式，那就是用隐藏的符号@asmname。除了作为非头文件方式的导入之外，@asmname 还承担着和 @objc 的 “重命名 Swift 中类和方法名字” 类似的任务，这可以将 C 中不认可的 Swift 程序元素字符重命名为 ascii 码，以便在 C 中使用。
+
+```swift
+//File.swift
+//将 C 的 test 方法映射为 Swift 的 c_test 方法
+@asmname("test") func c_test(a: Int32) -> Int32
+
+func testSwift(input: Int32) {
+    let result = c_test(input)
+    print(result)
+}
+
+testSwift(1)
+// 输出：2
+```
+
+### 30.delegate
+
+在使用delegate的时候一般与delegate会在申明的时候将其指定为weak，在这个 delegate 实际的对象被释放的时候，会被重置回 nil。（也可以间接的防止循环引用）Swift里你直接用weak修饰是不会通过的。因为 Swift 的 protocol 是可以被除了 class 以外的其他类型遵守的，而对于像 struct 或是 enum 这样的类型，本身就不通过引用计数来管理内存，所以也不可能用 weak 这样的 ARC 的概念来进行修饰。 当然 想要使用 weak delegate，也很简单，可以用@bject 转成Objective-C中的协议，还有一种在协议后面加上:class声明限定成类协议。
+
