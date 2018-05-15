@@ -774,3 +774,117 @@ testSwift(1)
 
 在使用delegate的时候一般与delegate会在申明的时候将其指定为weak，在这个 delegate 实际的对象被释放的时候，会被重置回 nil。（也可以间接的防止循环引用）Swift里你直接用weak修饰是不会通过的。因为 Swift 的 protocol 是可以被除了 class 以外的其他类型遵守的，而对于像 struct 或是 enum 这样的类型，本身就不通过引用计数来管理内存，所以也不可能用 weak 这样的 ARC 的概念来进行修饰。 当然 想要使用 weak delegate，也很简单，可以用@bject 转成Objective-C中的协议，还有一种在协议后面加上:class声明限定成类协议。
 
+### 31.Associated Object
+
+我们经常会问能不能用Category给已有的类增加成员变量。答案也很明明确，是不能的。但是可以通过runtime的动态绑定动态添加一个，即Associated Object。在Swift上也是一样的，只是写法上可能会略有不同：
+
+```swift
+// MyClass.swift
+class MyClass {
+}
+
+// MyClassExtension.swift
+private var key: Void?
+
+extension MyClass {
+    var title: String? {
+        get {
+            return objc_getAssociatedObject(self, &key) as? String
+        }
+        
+        set {
+            objc_setAssociatedObject(self,
+                &key, newValue,
+                .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        }
+    }
+}
+
+
+// 测试
+func printTitle(_ input: MyClass) {
+    if let title = input.title {
+        print("Title: \(title)")
+    } else {
+        print("没有设置")
+    }
+}
+
+let a = MyClass()
+printTitle(a)
+a.title = "Swifter.tips"
+printTitle(a)
+
+// 输出：
+// 没有设置
+// Title: Swifter.tips
+```
+
+### 32.Lock
+
+一般有多线程或者并发的代码，我们就需要考虑锁的问题了。而Cocoa 和 Objective-C 中加锁的方式有很多，但是其中在日常开发中最常用的应该是 @synchronized，这个关键字可以用来修饰一个变量，并为其自动加上和解除互斥锁。这样就可以保证变量在作用范围内不会被其他线程改变。
+
+```swift
+- (void)myMethod:(id)anObj {
+    @synchronized(anObj) {
+        // 在括号内持有 anObj 锁
+    }
+}
+```
+
+在Swift中没有这个关键词,但是我们可以用其本质的方法objc_sync_enter与objc_sync_exit自己写一个synchronized方法。（其实synchronized还有一些异常判断，我们这么写是忽略掉那些的。）
+
+```swift
+
+func myMethod(anObj: AnyObject!) {
+    objc_sync_enter(anObj)
+    
+    // 在 enter 和 exit 之间持有 anObj 锁
+    
+    objc_sync_exit(anObj)
+}
+
+func synchronized(_ lock: AnyObject, closure: () -> ()) {
+    objc_sync_enter(lock)
+    closure()
+    objc_sync_exit(lock)
+}
+
+func myMethodLocked(anObj: AnyObject!) {
+    synchronized(anObj) {
+        // 在括号内持有 anObj 锁
+    }
+}
+
+// 一个实际的线程安全的 setter 例子
+class Obj {
+    var _str = "123"
+    var str: String {
+        get {
+            return _str
+        }
+        set {
+            synchronized(self) {
+                _str = newValue
+            }
+        }
+    // 下略
+    }
+}
+```
+
+### 33.Toll-Free Bridging 和 Unmanaged
+
+在 Swift 中对于 Core Foundation (以及其他一系列 Core 开头的框架) 在内存管理进行了一系列简化，大大降低了与这些 Core Foundation (以下简称 CF ) API 打交道的复杂程度。
+
+因为在 Objective-C 中 ARC 负责的只是 NSObject 的自动引用计数，因此对于 CF 对象无法进行内存管理。我们在把对象在 NS 和 CF 之间进行转换时，需要向编译器说明是否需要转移内存的管理权。对于不涉及到内存管理转换的情况，在 Objective-C 中我们就直接在转换的时候加上 __bridge 来进行说明，表示内存管理权不变。例如有一个 API 需要 CFURLRef，而我们有一个 ARC 管理的 NSURL 对象的话，这样来完成类型转换：
+
+```objective-c
+NSURL *fileURL = [NSURL URLWithString:@"SomeURL"];
+SystemSoundID theSoundID;
+//OSStatus AudioServicesCreateSystemSoundID(CFURLRef inFileURL,
+//                             SystemSoundID *outSystemSoundID);
+OSStatus error = AudioServicesCreateSystemSoundID((__bridge CFURLRef)fileURL,&theSoundID);
+```
+
+Swift中就没有这么复杂了，swift中CF也在ARC的管辖范围之内了。但是对于非系统的CF API 因为没有强制要求遵守Cocoa的命名规范，所以贸然进行自动内存管理是不可行的。如果你没有明确地使用上面的标注来指明内存管理的方式的话，将这些返回 CF 对象的 API 导入 Swift 时，它们的类型会被对对应为 Unmanaged<T>。因为CF层非系统的比较少这里就不再深入研究了。
