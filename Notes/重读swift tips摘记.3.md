@@ -169,3 +169,35 @@ required init(coder: NSCoder) {
 ### 7.代码组织和FrameWork
 
 swift不稳定，制作framwork….嗯 还是算了吧 。要做还是可以做的，只是做了之后，swift不保证向下兼容，所以如果改了就会很麻烦比如只能XXX版本的 用XXX版本的framework。所以暂时最好的实践还是用Objective-C做框架吧。当然等swift稳定了，也可以用swift做。
+
+### 8.安全的资源组织方式
+
+Objective-C一般用宏定义把资源文件放在一起方便修改。而Swift没有宏的概念，用enum或者struct是一个很好的选择。但是这确实也没有解决，资源文件改变找不到的问题。
+
+### 9.Playground延迟运行
+
+在playground上是顺序执行的，执行完了一般就结束了，所以不能进行异步操作，如果你需要异步操作，那么需要加上"扩展包" PlaygroundSupport框架。也就是说在需要在playground上面加上如下代码：
+
+```Swift
+import PlaygroundSupport
+PlaygroundPage.current.needsIndefiniteExecution = true
+```
+
+一般来说开启后默认时间是30秒，也就是30秒后会停止，如果你想修改时间可以通过Alt + Cmd + 回车 来打开辅助编辑器。在这里你会看到控制台输出和时间轴，将右下角的 30 改成你想要的数字，就可以对延时运行的最长时间进行设定了。
+
+### 10.Playground与项目协作
+
+其实playground是可以导入到项目中的，支持framework的module导入使用。主要这么用的目的是做一些测试。（ps:其实感觉也不是很方便。）
+
+### 11.Playground可视化开发
+
+我们只要把我们想要显示的View给PlaygroundPage的liveView，并且打开Assistant Editor (Alt + Shift + Command + Return)就能看到View了。其实liveView只要满足PlaygroundLiveViewable协议就可以了那么UIViewController 其实同样也是可以的。表面上很美好，感觉我们可以在这里边写代码边看到UI的状态了，其实不行除非你把代码写在Playground上，从上面一条中我们知道，不能直接导入一个控制器的。所以感觉还是没什么用。
+
+### 12.数学和数字
+
+Darwin 里的 math.h 定义了很多和数学相关的内容，它在 Swift 中也被进行了 module 映射，因此在 Swift 中我们是可以直接使用的。有了这个保证，我们就不需要担心在进行数学计算的时候会和标准有什么差距。
+
+Double中有个很神奇的东西可以表示无穷大：Double.infinity，当然这也不是真正的无穷大，它只是swiftDouble最大值大的的数1.797693134862315e+308 ，还有个计算错误时会出现的数叫做NaN表示没有这个数，这个NaN不能进行判等，只能用isNaN来判断。
+
+
+
