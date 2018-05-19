@@ -102,7 +102,448 @@ void *ivar = &obj +offset(N)
 
 ### 消息的发送与转发
 
+前面简短的提到过转发这里细致的看下：
 
+```	C
+objc_msgSend(id _Nullable self, SEL _Nonnull op, ...)
+
+/// An opaque type that represents a method selector.
+typedef struct objc_selector *SEL;
+
+/// A pointer to the function of a method implementation. 
+#if !OBJC_OLD_DISPATCH_PROTOTYPES
+typedef void (*IMP)(void /* id, SEL, ... */ ); 
+#else
+typedef id _Nullable (*IMP)(id _Nonnull, SEL _Nonnull, ...); 
+#endif
+
+struct method_t {
+    SEL name;
+    const char *types;
+    IMP imp;
+
+    struct SortBySELAddress :
+        public std::binary_function<const method_t&,
+                                    const method_t&, bool>
+    {
+        bool operator() (const method_t& lhs,
+                         const method_t& rhs)
+        { return lhs.name < rhs.name; }
+    };
+};
+```
+
+从源码中我们可以看到发送消息的方法，这是一个可变参数函数（原因很简单，入参可能是多个。）
+
+第一个参数是receiver,也就是接受对象。
+
+第二个参数类型是SEL。SEL在OC中是selector方法选择器。objc_selector是一个映射到方法的C字符串。需要注意的是@selector()选择子**只与函数名有关**。
+
+最后的可变参数就是可变的入参了。
+
+在receiver拿到对应的selector之后，如果自己无法执行这个方法，那么该条消息要被转发。或者临时动态的添加方法实现。如果转发到最后依旧没法处理，程序就会崩溃。
+
+**所以编译期仅仅是确定了要发送消息，而消息如何处理是要运行期需要解决的事情。**
+
+那么问题来了objc_msgSend到底干了什么呢？[「objc_msgSend() Tour」](http://www.friday.com/bbum/2009/12/18/objc_msgsend-part-1-the-road-map/)这篇文章里有一个比较详细的结论：
+
+1.检查这个selector是不是要忽略。
+
+2.检查nil（如果配置了nil的处理程序就跳转到处理程序，没有就返回）
+
+3.搜索方法（先在缓存中找，如果找到了就跳转，如果没找到则到类的方法中，顺序查找，如果找到则加入到缓存并跳转，如果没找到则启动转发机制。） 到这里objc_msgSend就完成了。
+
+细看下源代码：
+
+```SAS
+/********************************************************************
+ *
+ * id objc_msgSend(id self, SEL	_cmd,...);
+ * IMP objc_msgLookup(id self, SEL _cmd, ...);
+ *
+ * objc_msgLookup ABI:
+ * IMP returned in r11
+ * Forwarding returned in Z flag
+ * r10 reserved for our use but not used
+ *
+ ********************************************************************/
+	
+	.data
+	.align 3
+	.globl _objc_debug_taggedpointer_classes
+_objc_debug_taggedpointer_classes:
+	.fill 16, 8, 0
+	.globl _objc_debug_taggedpointer_ext_classes
+_objc_debug_taggedpointer_ext_classes:
+	.fill 256, 8, 0
+
+	ENTRY _objc_msgSend
+	UNWIND _objc_msgSend, NoFrame
+	MESSENGER_START
+
+	NilTest	NORMAL   // nil 校验
+
+	GetIsaFast NORMAL		// r10 = self->isa
+	CacheLookup NORMAL, CALL	// calls IMP on success  // 查缓存
+
+	NilTestReturnZero NORMAL
+
+	GetIsaSupport NORMAL
+
+// cache miss: go search the method lists
+LCacheMiss:
+	// isa still in r10
+	MESSENGER_END_SLOW
+	jmp	__objc_msgSend_uncached   // 跳这里了。
+
+	END_ENTRY _objc_msgSend
+
+	
+	ENTRY _objc_msgLookup 
+
+	NilTest	NORMAL
+
+	GetIsaFast NORMAL		// r10 = self->isa
+	CacheLookup NORMAL, LOOKUP	// returns IMP on success
+
+	NilTestReturnIMP NORMAL
+
+	GetIsaSupport NORMAL
+
+// cache miss: go search the method lists
+LCacheMiss:
+	// isa still in r10
+	jmp	__objc_msgLookup_uncached
+
+	END_ENTRY _objc_msgLookup
+
+	
+	ENTRY _objc_msgSend_fixup
+	int3
+	END_ENTRY _objc_msgSend_fixup
+
+	
+	STATIC_ENTRY _objc_msgSend_fixedup
+	// Load _cmd from the message_ref
+	movq	8(%a2), %a2
+	jmp	_objc_msgSend
+	END_ENTRY _objc_msgSend_fixedup
+
+```
+
+```SAS
+/********************************************************************
+ *
+ * _objc_msgSend_uncached
+ * _objc_msgSend_stret_uncached
+ * _objc_msgLookup_uncached
+ * _objc_msgLookup_stret_uncached
+ *
+ * The uncached method lookup.
+ *
+ ********************************************************************/
+
+	STATIC_ENTRY __objc_msgSend_uncached
+	UNWIND __objc_msgSend_uncached, FrameWithNoSaves
+	
+	// THIS IS NOT A CALLABLE C FUNCTION
+	// Out-of-band r10 is the searched class
+
+	// r10 is already the class to search
+	MethodTableLookup NORMAL	// r11 = IMP  // 这个方法去搜索了
+	jmp	*%r11			// goto *imp
+
+	END_ENTRY __objc_msgSend_uncached
+
+	
+	STATIC_ENTRY __objc_msgSend_stret_uncached
+	UNWIND __objc_msgSend_stret_uncached, FrameWithNoSaves
+	
+	// THIS IS NOT A CALLABLE C FUNCTION
+	// Out-of-band r10 is the searched class
+
+	// r10 is already the class to search
+	MethodTableLookup STRET		// r11 = IMP
+	jmp	*%r11			// goto *imp
+
+	END_ENTRY __objc_msgSend_stret_uncached
+
+	
+	STATIC_ENTRY __objc_msgLookup_uncached
+	UNWIND __objc_msgLookup_uncached, FrameWithNoSaves
+	
+	// THIS IS NOT A CALLABLE C FUNCTION
+	// Out-of-band r10 is the searched class
+
+	// r10 is already the class to search
+	MethodTableLookup NORMAL	// r11 = IMP
+	ret
+
+	END_ENTRY __objc_msgLookup_uncached
+
+	
+	STATIC_ENTRY __objc_msgLookup_stret_uncached
+	UNWIND __objc_msgLookup_stret_uncached, FrameWithNoSaves
+	
+	// THIS IS NOT A CALLABLE C FUNCTION
+	// Out-of-band r10 is the searched class
+
+	// r10 is already the class to search
+	MethodTableLookup STRET		// r11 = IMP
+	ret
+
+	END_ENTRY __objc_msgLookup_stret_uncached
+
+```
+
+```SAS
+/////////////////////////////////////////////////////////////////////
+//
+// MethodTableLookup NORMAL|STRET
+//
+// Takes:	a1 or a2 (STRET) = receiver
+//		a2 or a3 (STRET) = selector to search for
+// 		r10 = class to search
+//
+// On exit: imp in %r11, eq/ne set for forwarding
+//
+/////////////////////////////////////////////////////////////////////
+
+.macro MethodTableLookup
+
+	push	%rbp
+	mov	%rsp, %rbp
+	
+	sub	$$0x80+8, %rsp		// +8 for alignment
+
+	movdqa	%xmm0, -0x80(%rbp)
+	push	%rax			// might be xmm parameter count
+	movdqa	%xmm1, -0x70(%rbp)
+	push	%a1
+	movdqa	%xmm2, -0x60(%rbp)
+	push	%a2
+	movdqa	%xmm3, -0x50(%rbp)
+	push	%a3
+	movdqa	%xmm4, -0x40(%rbp)
+	push	%a4
+	movdqa	%xmm5, -0x30(%rbp)
+	push	%a5
+	movdqa	%xmm6, -0x20(%rbp)
+	push	%a6
+	movdqa	%xmm7, -0x10(%rbp)
+
+	// _class_lookupMethodAndLoadCache3(receiver, selector, class)
+
+.if $0 == NORMAL
+	// receiver already in a1
+	// selector already in a2
+.else
+	movq	%a2, %a1
+	movq	%a3, %a2
+.endif
+	movq	%r10, %a3
+	call	__class_lookupMethodAndLoadCache3
+
+	// IMP is now in %rax
+	movq	%rax, %r11
+
+	movdqa	-0x80(%rbp), %xmm0
+	pop	%a6
+	movdqa	-0x70(%rbp), %xmm1
+	pop	%a5
+	movdqa	-0x60(%rbp), %xmm2
+	pop	%a4
+	movdqa	-0x50(%rbp), %xmm3
+	pop	%a3
+	movdqa	-0x40(%rbp), %xmm4
+	pop	%a2
+	movdqa	-0x30(%rbp), %xmm5
+	pop	%a1
+	movdqa	-0x20(%rbp), %xmm6
+	pop	%rax
+	movdqa	-0x10(%rbp), %xmm7
+
+.if $0 == NORMAL
+	cmp	%r11, %r11		// set eq for nonstret forwarding
+.else
+	test	%r11, %r11		// set ne for stret forwarding
+.endif
+	
+	leave
+
+.endmacro
+
+```
+
+```C
+// 核心查找方法
+IMP _class_lookupMethodAndLoadCache3(id obj, SEL sel, Class cls)
+{
+    return lookUpImpOrForward(cls, sel, obj, 
+                              YES/*initialize*/, NO/*cache*/, YES/*resolver*/);
+}
+
+```
+
+```C
+IMP lookUpImpOrForward(Class cls, SEL sel, id inst, 
+                       bool initialize, bool cache, bool resolver)
+{
+    IMP imp = nil;
+    bool triedResolver = NO;
+
+    runtimeLock.assertUnlocked();
+
+    // Optimistic cache lookup  先在缓存查找了
+    if (cache) {
+        imp = cache_getImp(cls, sel);
+        if (imp) return imp;
+    }
+
+    // runtimeLock is held during isRealized and isInitialized checking
+    // to prevent races against concurrent realization.
+
+    // runtimeLock is held during method search to make
+    // method-lookup + cache-fill atomic with respect to method addition.
+    // Otherwise, a category could be added but ignored indefinitely because
+    // the cache was re-filled with the old value after the cache flush on
+    // behalf of the category.
+
+    runtimeLock.read();
+
+    if (!cls->isRealized()) {
+        // Drop the read-lock and acquire the write-lock.
+        // realizeClass() checks isRealized() again to prevent
+        // a race while the lock is down.
+        runtimeLock.unlockRead();
+        runtimeLock.write();
+
+        realizeClass(cls);
+
+        runtimeLock.unlockWrite();
+        runtimeLock.read();
+    }
+
+    if (initialize  &&  !cls->isInitialized()) {
+        runtimeLock.unlockRead();
+        _class_initialize (_class_getNonMetaClass(cls, inst));
+        runtimeLock.read();
+        // If sel == initialize, _class_initialize will send +initialize and 
+        // then the messenger will send +initialize again after this 
+        // procedure finishes. Of course, if this is not being called 
+        // from the messenger then it won't happen. 2778172
+    }
+
+    
+ retry:    
+    runtimeLock.assertReading();
+
+    // Try this class's cache.  在类的缓存中找
+    
+    imp = cache_getImp(cls, sel);
+    if (imp) goto done;
+
+    // Try this class's method lists. 在本类的方法中找
+    {
+        Method meth = getMethodNoSuper_nolock(cls, sel);
+        if (meth) {
+            log_and_fill_cache(cls, meth->imp, sel, inst, cls);
+            imp = meth->imp;
+            goto done;
+        }
+    }
+
+    // Try superclass caches and method lists.  // 父类的方法列表中找
+    {
+        unsigned attempts = unreasonableClassCount();
+        for (Class curClass = cls->superclass;
+             curClass != nil;
+             curClass = curClass->superclass)
+        {
+            // Halt if there is a cycle in the superclass chain.
+            if (--attempts == 0) {
+                _objc_fatal("Memory corruption in class list.");
+            }
+            
+            // Superclass cache. 超类缓存
+            imp = cache_getImp(curClass, sel);
+            if (imp) {
+                if (imp != (IMP)_objc_msgForward_impcache) {
+                    // Found the method in a superclass. Cache it in this class.
+                    log_and_fill_cache(cls, imp, sel, inst, curClass);
+                    goto done;
+                }
+                else {
+                    // Found a forward:: entry in a superclass.
+                    // Stop searching, but don't cache yet; call method 
+                    // resolver for this class first.
+                    break;
+                }
+            }
+            
+            // Superclass method list.超类方法列表
+            Method meth = getMethodNoSuper_nolock(curClass, sel);
+            if (meth) {
+                log_and_fill_cache(cls, meth->imp, sel, inst, curClass);
+                imp = meth->imp;
+                goto done;
+            }
+        }
+    }
+
+    // No implementation found. Try method resolver once.  //都找不到 尝试_class_resolveMethod方法。注意，这些需要打开读锁，因为开发者可能会在这里动态增加方法实现，所以不需要缓存结果。然后因为增加了方法 所以需要重新搜索
+
+    if (resolver  &&  !triedResolver) {
+        runtimeLock.unlockRead();
+        _class_resolveMethod(cls, sel, inst);
+        runtimeLock.read();
+        // Don't cache the result; we don't hold the lock so it may have 
+        // changed already. Re-do the search from scratch instead.
+        triedResolver = YES;
+        goto retry;
+    }
+
+    // No implementation found, and method resolver didn't help. 
+    // Use forwarding. 没实现，只能转发了。
+
+    imp = (IMP)_objc_msgForward_impcache;
+    cache_fill(cls, sel, imp, inst);
+
+ done:
+    runtimeLock.unlockRead();
+
+    return imp;
+}
+```
+
+详细内容见[Objective-C 消息发送与转发机制原理](https://link.jianshu.com/?t=http://yulingtianxia.com/blog/2016/06/15/Objective-C-Message-Sending-and-Forwarding/) （里面最下面一张图很厉害，可以看下。）
+
+这里主要（笼统的）总结一下整个消息的发送与转发流程：
+
+1.在缓存内查找。
+
+2.在该类方法中查找。
+
+3.在超类中查找。
+
+4.有没有进行动态解析方法（有 解析玩 从头开始再来一次）
+
+```objective-c
++ (BOOL)resolveInstanceMethod:(SEL)selector  //如果是类方法则调用resolveClassMethod
+```
+
+5.有没有备用接受者（有 重新像备用接受者发送消息 快速转发）：
+
+```objective-c
+- (id)forwardingTargetForSelector:(SEL)selector
+```
+
+6.完整的转发
+
+```objective-c
+-(NSMethodSignature*)methodSignatureForSelector:(SEL)aSelector
+-(void)forwardInvocation:(NSInvocation *)anInvocation
+```
 
 ### 问题集
 
@@ -158,44 +599,7 @@ struct objc_super {
 
 其实从上面可以看出，当你用super调用时候其实编译器帮你打包一个self 加一个classe而已，在找的时候会先在superclass中找方法然后用，self去调用罢了。
 
-##### 4.NSObject
-
-下面代码会发什么？
-
-```objective-c
-@interface NSObject (DoSomething)
-
-+ (void) doThings1;
-- (void) doThings2;
-
-@end
-
-@implementation NSObject (DoSomething)
-
-- (void) doThings1 {
-    NSLog(@"1");
-}
-+ (void) doThings2 {
-    NSLog(@"2");
-}
-
-@end
-
-[NSObject doThings1];
-[[NSObject new] doThings2];
-```
-
-答案是输出1 ，然后崩溃。
-
-首先从上面的isa 与superclass图中我们可以看到NSObject类元的super 其实是他的类对象。所以第一个可以执行成功。
-
-但是第二个，找不到实现方法，所以崩溃了。
-
-这里可以再深入的讲下如果你用NSObject 调用copy 是可以调用的，返回的是本身，而valueForKey:也是可以调用的，但是会崩溃。
-
-其实他很多NSObject的类方法，同样的方法名实现了对象方法（一般处理为奔溃），防止你绕过去。为什么这么设计？猜测是它有些方法可能要类和对象都能用吧，不太清楚。
-
-##### 5.isa
+##### 54.isa
 
 下面代码的值是多少：
 
@@ -210,7 +614,7 @@ struct objc_super {
 
 看上面那张的isa 与superclass图就能得到答案。
 
-##### 6.地址
+##### 5.地址
 
 下面代码输出什么：
 
@@ -255,6 +659,62 @@ struct objc_super {
 
 }
 ```
+
+##### 6.重载
+
+下面代码可以编译通过吗？
+
+```objective-c
+// 第一种情况
+- (void)tellName;
+- (void)tellName:(NSString *)name;
+// 第二种情况
+- (void)tellName:(NSString *)name;
+- (void)tellName:(NSArray *)name;
+```
+
+OC是不支持重载的，原因请看上面的SEL的本质。不同类中相同名字的方法所对应的方法选择器是相同的，即使方法名字相同而变量类型不同也会导致它们具有相同的方法选择器。
+
+##### 7.为什么给nil发送消息不会崩溃
+
+因为在在发送消息的过程中先做了判断 如果nil 清空 直接返回了。
+
+##### 8.NSObject
+
+下面代码会发什么？
+
+```objective-c
+@interface NSObject (DoSomething)
+
++ (void) doThings1;
+- (void) doThings2;
+
+@end
+
+@implementation NSObject (DoSomething)
+
+- (void) doThings1 {
+    NSLog(@"1");
+}
++ (void) doThings2 {
+    NSLog(@"2");
+}
+
+@end
+
+[NSObject doThings1];
+[[NSObject new] doThings2];
+```
+
+答案是输出1 ，然后崩溃。
+
+首先从上面的isa 与superclass图中我们可以看到NSObject类元的super 其实是他的类对象。所以第一个可以执行成功。
+
+但是第二个，找不到实现方法，所以崩溃了。
+
+这里可以再深入的讲下如果你用NSObject 调用copy 是可以调用的，返回的是本身，而valueForKey:也是可以调用的，但是会崩溃。
+
+其实他很多NSObject的类方法，同样的方法名实现了对象方法（一般处理为奔溃），防止你绕过去。为什么这么设计？猜测是它有些方法可能要类和对象都能用吧，不太清楚。
 
 #####  5.runtime 如何实现 weak 变量的自动置nil？
 

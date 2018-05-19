@@ -199,5 +199,83 @@ Darwin 里的 math.h 定义了很多和数学相关的内容，它在 Swift 中�
 
 Double中有个很神奇的东西可以表示无穷大：Double.infinity，当然这也不是真正的无穷大，它只是swiftDouble最大值大的的数1.797693134862315e+308 ，还有个计算错误时会出现的数叫做NaN表示没有这个数，这个NaN不能进行判等，只能用isNaN来判断。
 
+### 13.JSON 和 Codable
 
+看标题我们就能知道，这里主要聊json的解析和转化，确实Codable协议是一个很好的方式：
 
+```swift
+struct Obj: Codable {
+    let menu: Menu
+    struct Menu: Codable {
+        let id: String
+        let value: String
+        let popup: Popup
+    }
+    
+    struct Popup: Codable {
+        let menuItem: [MenuItem]
+        enum CodingKeys: String, CodingKey {
+            case menuItem = "menuitem"
+        }
+    }
+    
+    struct MenuItem: Codable {
+        let value: String
+        let onClick: String
+        
+        enum CodingKeys: String, CodingKey {
+            case value
+            case onClick = "onclick"
+        }
+    }
+}
+
+let data = jsonString.data(using: .utf8)!
+do {
+    let obj = try JSONDecoder().decode(Obj.self, from: data)
+    let value = obj.menu.popup.menuItem[0].value
+    print(value)
+} catch {
+    print(error)
+}
+```
+
+### 14.NSNull
+
+在 Objective-C 中，因为 NSDictionay 和 NSArray 只能存储对象，对于像 JSON 中可能存在的 null 值，NSDictionay 和 NSArray 中就只能用 NSNull 对象来表示。
+
+在 Objective-C 中，我们一般通过严密的判断来解决这个问题：即在每次发送消息的时候都进行类型检查，以确保将要接收消息的对象不是 NSNull 的对象。另一种方法是添加 NSNull 的 category，让它响应各种常见的方法 (比如 integerValue 等)，并返回默认值。
+
+而在 Swift 中，这个问题被语言的特性彻底解决了。因为 Swift 所强调的就是类型安全，无论怎么说都需要一层转换。
+
+### 15.文档注释
+
+Xcode 8 中自带了注释文档生成的工具，你可以在想要添加注释的方法或者属性上方使用快捷键 (默认是 Alt + Cmd + /)，它就能够帮助你快速并且自动地生成符合格式的文档注释模板，你需要做的只是填上你需要的描述。
+
+### 16.性能考虑
+
+因为OC调用方法是进行时分发，而Swift是在编译时基本确定调用方法，所以Swift的性能会好于OC，所以减少NSObject的使用多实用Swift类能得到更多的性能提升。
+
+### 17.Log输出
+
+在swift中比较好的Log输出是自己写一个方法：
+
+```swift
+// 其中 #file 表示包含这个符号的文件的路径  string
+// #line 符号出现处的行号 int
+// #column 符号出现的列 int
+// #function 包含这个符号的方法名字  string
+func printLog<T>(_ message: T,
+                    file: String = #file,
+                  method: String = #function,
+                    line: Int = #line)
+{
+    #if DEBUG
+    print("\((file as NSString).lastPathComponent)[\(line)], \(method): \(message)")
+    #endif
+}
+```
+
+### 18.溢出
+
+开发的时候有时候要考虑设备的位数。
