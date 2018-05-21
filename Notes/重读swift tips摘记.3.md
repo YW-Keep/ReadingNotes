@@ -278,4 +278,108 @@ func printLog<T>(_ message: T,
 
 ### 18.溢出
 
-开发的时候有时候要考虑设备的位数。
+开发的时候有时候要考虑设备的位数。最简单的例子，在 Swift 中我们一般简单地使用 Int 来表示整数，在 iPhone 5 和以下的设备中，这个类型其实等同于 Int32，而在 64 位设备中表示的是 Int64 (这点和 Objective-C 中的 NSInteger 表现是完全一样的，事实上，在 Swift 中 NSInteger 只是一个 Int 的 typealias。)
+
+在溢出时候，Swift就会崩溃，如果你不希望其奔溃而是忽略溢出则可以使用有&的操作符类忽略溢出：
+
+```swift
+var max = Int.max
+max = max &+ 1
+
+// 64 位系统下
+// max = -9,223,372,036,854,775,808
+```
+
+### 19.宏定义 define
+
+**Swft中没有宏定义了。**
+
+如果在swift中你需要使用之前的宏的特性的话，就使用合适作用范围的 let 或者 get 属性来替代原来的宏定义值。
+
+随着 #define 的消失，像 #ifdef 这样通过宏定义是否存在来进行条件判断并决定某些代码是否参与编译的方式也消失了。但是我们仍然可以使用 #if 并配合编译的配置来完成条件编译。
+
+### 20.属性访问控制
+
+Swift 中由低至高提供了 private，fileprivate，internal，public 和 open 五种访问控制的权限。默认的为 internal。
+
+第一个是只能在该类访问（当然也是该文件）。第二个是只能在该文件访问。第三个是整个module 可以用。第四个是在别的module也能访问但是不能继承重写。第五个是在别的module也能访问能继承重写。 当然这些权限控制也可以只针对get set 其中一个方法。
+
+### 21.Swift中的测试
+
+Swift中XCTest和待测试的app是分别独立存在于两个target的。（这样的情况，我们在前面的权限说过了，需要标记为public或者open才可以访问。）**单元测试可以通过@testable 整个关键词 import 就可以访问到 internal内容了。**
+
+### 22.Core Data中的@dynamic
+
+OC中有一个关键词在Core Data的model里经常用到就是@dynamic，就是告诉编译器我们不会再编译的时候确定这个属性的行为实现。Swift也有这个关键词，但是是告诉编译器进行时的意思，所以Swift有另外一个关键词替代它就是@NSManaged。
+
+### 23.闭包歧义
+
+在 Swift 的 module 定义中，Void 只是一个 typealias 而已，没什么特别：
+
+```Swift
+typealias Void = ()
+```
+
+() 又是什么呢？在多元组的最后我们指出了，其实 Swift 中任何东西都是放在多元组里的。(42, 42) 是含有两个 Int 类型元素的多元组，(42) 是含有一个 Int 的多元组，那么 () 是什么？没错，这是一个不含有任何元素的多元组。
+
+所以 func times(f: Void -> Void) 根本不是 “不接受参数” 的闭包，而是一个接受没有任何元素的多元组的闭包。
+
+所以说为了增强可读性和安全性，最直接是在调用时尽量指明闭包参数的类型。
+
+### 24.泛型扩展
+
+我们不能通过扩展来重新定义当前已有的泛型符号，但是可以对其进行使用；在扩展中也不能为这个类型添加泛型符号；但只要名字不冲突，我们是可以在新声明的方法中定义和使用新的泛型符号的。
+
+例如为数组扩展一个获取随机元素的方法:
+
+```swift
+
+extension Array {
+    var random: Element? {
+        return self.count != 0 ?
+            self[Int(arc4random_uniform(UInt32(self.count)))] :
+        nil
+    }
+    
+    func appendRandomDescription
+        <U: CustomStringConvertible>(_ input: U) -> String {
+            
+            if let element = self.random {
+                return "\(element) " + input.description
+            } else {
+                return "empty array"
+            }
+    }
+}
+
+let languages = ["Swift","ObjC","C++","Java"]
+languages.random!
+// 随机输出是这四个字符串中的某个
+
+let ranks = [1,2,3,4]
+ranks.random!
+// 随机输出是这四个数字中的某个
+
+languages.appendRandomDescription(ranks.random!)
+// 随机组合 languages 和 ranks 中的各一个元素，然后输出
+
+```
+
+### 25.兼容性
+
+Apple 通过将一个最小化的运行库集成打包到 app 中这样的方式来解决兼容性的问题。使用了 Swift 语言的项目在编译时会在 app 包中带有这一套运行时环境，并在启动时加载这些 dylib 包作为 Swift 代码的运行环境。这些库文件位于打包好的 app 的 Frameworks 文件夹中。
+
+这样做的好处是能完美做到向上兼容以及向下兼容，但是缺点也十分明显，就是会增大APP所需要的存储空间，跑起来也会有额外的内存空间开销。
+
+我们其实也在等，Apple 承诺将在一两年内 Swift 持续改进并且拥有一个相对稳定的运行时 API 后，将其添加到系统中进行固定。
+
+### 26.列举enum类型
+
+如果要列举enum，一个比较好的做法是用扩展实现allValues,作为一个静态属性，返回枚举所有类型的数组。
+
+### 27.尾递归
+
+递归其实很容易造成内存泄漏，一种相对比较好的方式是用尾递归，就是返回的是调用一个方法，这样内存就会被释放了。但是这种优化只存在于Release中。（其实还是尽量不要写循环次数未知的递归，尽量还是把递归改成循环吧。）
+
+
+
