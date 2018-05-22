@@ -448,7 +448,7 @@ is 在功能上相当于原来的 isKindOfClass，可以检查一个对象是否
 
 这是一个很强大的属性，通过 KVO 我们可以实现很多松耦合的结构，使代码更加灵活和强大：像通过监听 model 的值来自动更新 UI 的绑定这样的工作，基本都是基于 KVO 来完成的。
 
-其实KVO的实现是基于KVC(Key-ValueCoding)以及动态派发技术实现的，这些都是Objective-C的运行时的东西。所以KVO仅限在于NSObject的子类中。
+KVO的本质就是监听对象有没有调用被监听属性对应的setter方法，具体实现应该是重写其setter方法即可（进行时进行修改的），这些都是Objective-C的运行时的东西。所以KVO仅限在于NSObject的子类中。
 
 Swift为了效率是默认警用动态派发的，所以想要Swift来实现KVO。需要把观测的对象标记为dynamic和@objc。
 
