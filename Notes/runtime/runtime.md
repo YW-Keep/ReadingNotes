@@ -56,7 +56,7 @@ isa指针是OOP下runtime消息机制的协议，只要首地址是isa指针，�
 
 这就是创建的精简版本，其中instanceSize编译时就决定了。（其实从这里我们也大概能看出为什么分类不能加属性了，这里大小都定了）
 
-那么接下来会有个问题，那就是为什么变量不需要手动设置0/nil，其实在calloc()方法为我们连续分配足够的空间，以计数对象大小字节的内存，并返回分配内存的指针。 非配的空间默认设置了0。
+那么接下来会有个问题，那就是为什么变量不需要手动设置0/nil，其实在calloc()方法为我们连续分配足够的空间，以计数对象大小字节的内存，并返回分配内存的指针。 分配的空间默认设置了0。
 
 好了总上所属，我们画图了解下其内存存放的样子。
 
@@ -78,8 +78,6 @@ void *ivar = &obj +offset(N)
 
 
 那么问题来了，消息怎么发的呢（方法调用） 其实[obj foo] 会被编译成objc_msgSend(obj,"foo")。
-
-这里可以额外提一句其实self 是一个隐藏参数，指向当前的对象或者类，而super并不是，它只是一个编译器指示符，也就是说super 与self的消息接受者其实是同一个。
 
 ### 消息的发送与转发
 
@@ -636,9 +634,9 @@ void objc_removeAssociatedObjects(id object)
 
 ### 问题集
 
-##### 1.分类为什么可以加方法不能加属性？
+##### 1.分类为什么可以加方法不能加成员变量？
 
-从上面的类的结构体中可以看到方法列表是在wr上，也就是可以读写，而属性列表在ro中就是只读的。所以分类是不可以加属性的。（其实从class中ro中的instanceSize就可以知道了，instanceSize在编译器确定，实例变量存储肯定需要要内存的。所以不可增加）
+从上面的类的结构体中可以看到方法列表是在wr上，也就是可以读写，而属性列表在ro中就是只读的。所以分类是不可以加成员变量的。（其实从class中ro中的instanceSize就可以知道了，instanceSize在编译器确定，实例变量存储肯定需要要内存的。所以不可增加）
 
 ##### 2.为什么分类加方法会覆盖之前的方法？
 
@@ -736,7 +734,9 @@ struct objc_super {
 
 答案是 输出 my name is hello，如果删除NSString *hello = @"hello"; 输出 my name is <ViewController: 0x7f9317f0d660>。
 
-原因：看上面的对象本质。ps:内存是堆存放的。
+为什么可以调用？obj被转换成了一个指向Person Class的指针，然后使用id转换成了objc_object类型。obj现在已经是一个Person类型的实例对象了。当然接下来可以调用tellName的方法。
+
+原因：看上面的对象本质。
 
 ```objective-c
 - (void)viewDidLoad {
@@ -748,6 +748,10 @@ struct objc_super {
 
 }
 ```
+
+ps:这里要稍微讲下iOS中堆和栈：
+
+OC对象存放于堆里面(堆内存要程序员手动回收) 非OC对象一般放在栈里面(栈内存会被系统自动回收)，所以对象其实放在堆里的，这里是一种通过栈的方式去展示这个情况。
 
 ##### 6.重载
 
@@ -833,11 +837,15 @@ Method Swizzling（方法替换）是iOS中AOP(面相切面编程)的一种实�
                                             method_getImplementation(swizzledMethod),
                                             method_getTypeEncoding(swizzledMethod));
         if (didAddMethod) {
+            //替换cls类对象中name对应方法的实现
+//IMP class_replaceMethod(Class cls, SEL name, IMP imp, const char *types)
             class_replaceMethod(class,
                                 swizzledSelector,
                                 method_getImplementation(originalMethod),
                                 method_getTypeEncoding(originalMethod));
         } else {
+            //交换m1，m2方法对应具体实现的函数指针
+            // void method_exchangeImplementations(Method m1, Method m2)
             method_exchangeImplementations(originalMethod, swizzledMethod);
         }
     });
@@ -849,7 +857,7 @@ Method Swizzling（方法替换）是iOS中AOP(面相切面编程)的一种实�
 }
 //在进行Swizzling的时候，我们需要用class_addMethod先进行判断一下原有类中是否有要替换的方法的实现。
 //如果class_addMethod返回NO，说明当前类中有要替换方法的实现，所以可以直接进行替换，调用method_exchangeImplementations即可实现Swizzling。
-//如果class_addMethod返回YES，说明当前类中没有要替换方法的实现，我们需要在父类中去寻找。这个时候就需要用到method_getImplementation去获取class_getInstanceMethod里面的方法实现。然后再进行class_replaceMethod来实现Swizzling。
+//如果class_addMethod返回YES（这个方法是父类的方法），说明当前类中没有要替换方法的实现,这个时候就需要用到method_getImplementation去获取class_getInstanceMethod里面的方法实现。然后再进行class_replaceMethod来实现Swizzling。
 
 @end
 ```
@@ -863,10 +871,6 @@ Objective-C在运行时会自动调用类的两个方法+load和+initialize。+l
 2.Swizzling应该总是在dispatch_once中执行
 
 Swizzling会改变全局状态，所以在运行时采取一些预防措施，使用dispatch_once就能够确保代码不管有多少线程都只被执行一次。这将成为Method Swizzling的最佳实践。
-
-3.Swizzling在+load中执行时，不要调用[super load]
-
-原因同注意点二，如果是多次继承，并且对同一个方法都进行了Swizzling，那么调用[super load]以后，父类的Swizzling就失效了。
 
 ##### 11.KVO是怎么实现的？ KVC与KVO之间有啥关系？
 
@@ -987,6 +991,8 @@ Class object_getClass(id obj)
 @dynamic associatedObject;
 
 - (void)setAssociatedObject:(id)object {
+    //设置object对象关联的对象
+//void objc_setAssociatedObject(id object, const void *key, id value, objc_AssociationPolicy policy)
     objc_setAssociatedObject(self, @selector(associatedObject), object, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 }
 
