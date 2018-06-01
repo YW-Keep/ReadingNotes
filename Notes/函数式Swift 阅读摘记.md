@@ -115,3 +115,260 @@ return { image in filter2(filter1(image)) }
 
 ### Map、Filter和Reduce
 
+map的定义如下：
+
+```SWIFT
+extension Array {
+    func map<T>(_ transform: (Element) -> T) -> [T] {
+        var result: [T] = []
+        for x in self {
+            result.append(transform(x))
+        }
+        return result
+    }
+}
+```
+
+Filter定义如下：
+
+```Swift
+extension Array {
+    func filter(_ includeElement: (Element) -> Bool) -> [Element] {
+        var result: [Element] = []
+        for x in self where includeElement(x) {
+            result.append(x)
+        }
+        return result
+    }
+}
+```
+
+Reduce定义如下：
+
+```swift
+extension Array {
+    func reduce<T>(_ initial: T, combine: (T, Element) -> T) -> T {
+        var result = initial
+        for x in self {
+            result = combine(result, x)
+        }
+        return result
+    }
+}
+```
+
+其实想想我们可以用Reduce重新定义map以及Filter
+
+```swift
+extension Array {
+    func mapUsingReduce<T>(_ transform: (Element) -> T) -> [T] {
+    return reduce([]) { result, x in
+        return result + [transform(x)]
+    }
+}
+func filterUsingReduce(_ includeElement: (Element) -> Bool) -> [Element] {
+    return reduce([]) { result, x in
+        return includeElement(x) ? result + [x] : result
+    }
+}
+```
+
+我们能够使用 reduce 来表示所有这些函数，这个事实说明了 reduce 能够通过通用的方法来体现一个相当常见的编程模式：遍历数组并计算结果。(ps：其实这并不是一个好主意，因为这样做代码最终会在运行期间大量复制生成的数组，换句话说，它会反复分配内存，释放内存，以及复制大量内存中的内容。)
+
+**使用泛型允许你无需牺牲类型安全就能够在编译器的帮助下写出灵活的函数；如果使用 Any 类型，那你就真的就孤立无援了。**
+
+### 可选值
+
+在标准库中??定义如下
+
+```Swift
+infix operator ??
+func ??<T>(optional: T?, defaultValue: @autoclosure () throws -> T)
+rethrows -> T
+{
+    if let x = optional {
+        return x
+    } else {
+        return try defaultValue()
+    }
+}
+```
+
+这里有几个问题1.为什么要用闭包。答案也很简单，当你的默认值通过计算得到的时候其实我期望的是在nil的时候才去执行计算代码，所以这里要使用闭包。2.为什么要使用@autoclosure，这个其实就是自动闭包为了书写好看。3.为什么使用throws。这个不确定，应该是为了防止内部有错误吧。
+
+选择显式的可选类型更符合 Swift 增强静态安全的特性。强大的类型系统能在代码执行前捕获到错误，而且显式可选类型有助于避免由缺失值导致的意外崩溃。
+
+Objective-C 采用的默认取零的做法有其弊端，可能你会想要区分失败的字典查询 (键不存在于字典) 和成功但返回 nil 的字典查询 (键存在于字典，但关联值是 nil) 两种情况。若要在 Objective-C 中做到这一点，你只能使用 NSNull。
+
+### 案例探究：QuickCheck
+
+测试通常由一些代码片段和预期结果组成。执行代码之后，将它的结果与测试中定义的预期结果相比较。不同的库测试的层次会有所不同 —— 有的测试独立的方法，有的测试类，还有一些执行集成测试 (运行整个应用)。在本章中，我们将通过迭代的方法，一步一步完善并最终构建一个针对 Swift 函数进行“特性测试 (property-based testing)”的小型库。
+
+QuickCheck (Claessen and Hughes 2000) 是一个用于随机测试的 Haskell 库。相较于独立的单元测试中每个部分都依赖特定输入来测试函数是否正确，QuickCheck 允许你描述函数的抽象特性并生成测试来验证这些特性。当一个特性通过了测试，就没有必要再证明它的正确性。更确切地说，QuickCheck 旨在找到证明特性错误的临界条件。在本章中，我们将用 Swift (部分地) 移植 QuickCheck 库。
+
+下面举例子叙述使用比如需要检查加法交换律:
+
+```swift
+func plusIsCommutative(x: Int, y: Int) -> Bool {
+    return x + y == y + x
+}
+
+check("Plus should be commutative", plusIsCommutative)
+// "Plus should be commutative" passed 10 tests.
+//如果用尾随闭包，就更简单了
+check("Additive identity") { (x: Int) in x + 0 == x }
+// "Additive identity" passed 10 tests.
+```
+
+从上面的测试代码中可以看出来核心问题就是构建QuickCheck，而构建QuickCheck我们需要做下面几件事情：
+
+1.首先需要有方法生成不同类型的随机数
+
+2.有了随机数我们需要实现check函数，然后把随机数传递给他的特性参数
+
+3.测试失败，我们会希望测试的输入值尽可能精准。
+
+4.最后需要适用带有泛型的类型的函数。
+
+#### 生成随机数
+
+```Swift
+// 用arc4random生成随机数
+extension Int: Arbitrary {
+    static func arbitrary() -> Int {
+        return Int(arc4random())
+   ji
+}
+// 加入范围的随机数
+extension Int {
+static func arbitrary(in range: CountableRange<Int>) -> Int {
+        let diff = range.upperBound  - range.lowerBound
+        return range.lowerBound + (Int.arbitrary() % diff)
+    }
+}
+// 生成随机字符串
+extension UnicodeScalar: Arbitrary {
+    static func arbitrary() -> UnicodeScalar {
+        return UnicodeScalar(Int.arbitrary(in: 65..<90))!
+    }
+}
+extension String: Arbitrary {
+    static func arbitrary() -> String {
+        let randomLength = Int.arbitrary(in: 0..<40)
+        let randomScalars = (0..<randomLength).map { _ in
+        UnicodeScalar.arbitrary()
+        }
+        return String(UnicodeScalarView(randomScalars))
+    }
+}
+```
+
+#### 实现check函数
+
+```Swift
+// check函数第一版
+func check1<A: Arbitrary>(_ message: String, _ property: (A) -> Bool) -> () {
+    for _ in 0..<numberOfIterations {
+        let value = A.arbitrary()
+        guard property(value) else {
+            print("\"\(message)\" doesn't hold: \(value)")
+            return
+        }
+    }
+    print("\"\(message)\" passed \(numberOfIterations) tests.")
+}
+```
+
+#### 缩小范围
+
+```swift
+protocol Arbitrary: Smaller {
+    static func arbitrary() -> Self
+}
+// 迭代函数来缩小范围
+func iterate<A>(while condition: (A) -> Bool, initial: A, next: (A) -> A?) -> A {
+    guard let x = next(initial), condition(x) else {
+        return initial
+    }
+    return iterate(while: condition, initial: x, next: next)
+}
+// 那么check就有第二个版本了
+func check2<A: Arbitrary>(_ message: String, _ property: (A) -> Bool) -> () {
+    for _ in 0..<numberOfIterations {
+        let value = A.arbitrary()
+        guard property(value) else {
+            let smallerValue = iterate(while: { !property($0) }, initial: value) {
+            $0.smaller()
+            }
+            print("\"\(message)\" doesn't hold: \(smallerValue)")
+            return
+        }
+    }
+    print("\"\(message)\" passed \(numberOfIterations) tests.")
+}
+```
+
+#### 数组扩展
+
+我们想做的是让 Array 本身遵循 Arbitrary 协议。不过，只有数组的每一项都遵循 Arbitrary 协议，数组本身才会遵循 Arbitrary 协议。理想情况下，我们我们会像下面这样来表示数组的每一项都应该遵循：
+
+```swift
+extension Array: Arbitrary where Element: Arbitrary {
+    static func arbitrary() -> [Element] {
+    // ...
+    }
+}
+```
+
+很遗憾，目前还无法将这个限制表示为类型约束，并不可能编写一个让 Array 遵循 Arbitrary 协议的扩展。所以我们又只能修改check方法。
+
+首先我们定义一个包含两个所需函数的辅助结构体：
+
+```Swift
+struct ArbitraryInstance<T> {
+    let arbitrary: () -> T
+    let smaller: (T) -> T?
+}
+func checkHelper<A>(_ arbitraryInstance: ArbitraryInstance<A>,
+_ property: (A) -> Bool, _ message: String) -> ()
+{
+    for _ in 0..<numberOfIterations {
+        let value = arbitraryInstance.arbitrary()
+        guard property(value) else {
+            let smallerValue = iterate(while: { !property($0) },
+            initial: value, next: arbitraryInstance.smaller)
+            print("\"\(message)\" doesn't hold: \(smallerValue)")
+            return
+        }
+    }
+    print("\"\(message)\" passed \(numberOfIterations) tests.")
+}
+//如果我们知道Arbitrary 那么我们就可以重新写check了
+func check<X: Arbitrary>(_ message: String, property: (X) -> Bool) -> () {
+    let instance = ArbitraryInstance(arbitrary: X.arbitrary,
+    smaller: { $0.smaller() })
+    checkHelper(instance, property, message)
+}
+//如果我们有一个类型，无法对它定义所需的 Arbitrary 实例，就像数组的情况一样，我们可以重载 check 函数并自己构造所需的 ArbitraryInstance 结构体
+func check<X: Arbitrary>(_ message: String, _ property: ([X]) -> Bool) -> () {
+    let instance = ArbitraryInstance(arbitrary: Array.arbitrary,
+    smaller: { (x: [X]) in x.smaller() })
+    checkHelper(instance, property, message)
+}
+```
+
+也许出乎你的意料，不过有确凿的证据表明，测试技术会影响你的代码设计。依赖测试驱动设计的人们使用测试并不仅仅是为了验证他们的代码是否正确，他们还根据测试来指导编写测试驱动的代码，这样一来，代码的设计将会变得简单。这非常有意义 —— 如果不需要复杂的构建流程就能够容易地为类编写测试代码的话，说明这个类的耦合度很低。
+
+#### 展望
+
+1.缩小的方法很傻很天真。
+
+2.Arbitrary实例相当简单。
+
+3.将生成的测试数据分类
+
+4.我们也许会希望能更好地控制生成的随机输入值的个数
+
+5.我们可能想用确定的种子来初始化随机生成器，以使它能够重现测试用例所生成的值。这将会使失败的测试更容易被复现
+
+目前，有很多实现了特性测试的 Swift 库。比如说 SwiftCheck 就是其中之一。如果你想在 Objective-C 上进行特性测试，可以考虑 Fox。
