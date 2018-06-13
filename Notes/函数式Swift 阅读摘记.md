@@ -419,3 +419,271 @@ func ??<T>(result: Result<T>, handleError: (Error) -> T) -> T {
 ```
 
 其实，我们希望说明的问题，并不是 “Result 类型是 Swift 中处理错误的最好的方案”。我们只是试图阐述，如何使用枚举去定义你自己的类型，来解决你的具体需求。通过让类型更加严密，我们可以在程序测试或运行之前，就利用 Swift 的类型检验优势，来避免许多错误。
+
+### 纯函数式数据结构
+
+所谓纯函数式数据结构 (Purely Functional Data Structures) 指的是那些具有不变性的高效的数据结构。
+
+这里主要封装了二叉搜索数以及字典树
+
+### 探究案例：图标（未细看代码）
+
+在本章中，我们会看到一种描述图表的函数式方式，并讨论如何利用 Core Graphics 来绘制它们。通过对 Core Graphic 进行一层函数式的封装，可以得到一个更简单且易于组合的 > API。
+
+本章会更进一步：不再立刻执行绘制指令，而是构造一个中间层数据结构来对图表进行描述。
+
+当我们将本章中构建的库与第二章中的库进行对比时，可以看到很多相似点。两者都是针对某个问题领域 (区域和图表)，并且创建了一个小巧的函数库来描述这个领域。两个库都通过函数提供了一个高度可组合的接口。这两个库都定义了一种领域特定语言 (domain-specific language，简称 DSL)，并将其嵌入在 Swift 中。每种 DSL 都具有针对性，它们是用于解决特定问题的小型编程语言。
+
+### 迭代器和序列
+
+迭代器 (Iterators) 和序列 (Sequences)组成了Swift中 for循环的基础体系。
+
+从概念上来说，一个迭代器是每次根据请求生成数组新元素的“过程”。任何类型只要遵守以下协议，那么它就是一个迭代器：
+
+```swift
+protocol IteratorProtocol {
+    associatedtype Element
+    mutating func next() -> Element?
+}
+```
+
+举个例子，下面的迭代器会从数组末尾开始生成序列值。(其中这里生成的是index也就是位置)
+
+```swift
+struct ReverseIndexIterator: IteratorProtocol {
+    var index: Int
+    init<T>(array: [T]) {
+        index = array.endIndex-1
+    }
+    mutating func next() -> Int? {
+        guard index >= 0 else { return nil }
+        defer { index -= 1 }
+        return index
+    }
+}
+// 使用如下
+let letters = ["A", "B", "C"]
+()
+var iterator = ReverseIndexIterator(array: letters)
+while let i = iterator.next() {
+    print("Element \(i) of the array is \(letters[i])")
+}
+/*
+Element 2 of the array is C
+Element 1 of the array is B
+Element 0 of the array is A
+*/
+```
+
+通过这种定义迭代器的方式，我们将数据的生成与使用分离开来。
+
+基于为迭代器定义的协议，我们还可以编写一些适用于所有迭代器的泛型函数。（例如find方法）
+
+```swift
+extension IteratorProtocol {
+    mutating func find(predicate: (Element) -> Bool) -> Element? {
+        while let x = next() {
+            if predicate(x) {
+                return x
+            }
+        }
+        return nil
+    }
+}
+```
+
+**迭代器为 Swift 另一个协议提供了基础类型，这个协议就是序列。**
+
+迭代器提供了一个“单次触发”的机制以反复地计算出下一个元素。这种机制不支持返查或重新生成已经生成过的元素，我们想要做到这个的话就只能再创建一个新的迭代器。协议 SequenceType 则为这些功能提供了一组合适的接口：
+
+```swift
+protocol Sequence {
+    associatedtype Iterator: IteratorProtocol
+    func makeIterator() -> Iterator
+    // ...
+}
+```
+
+每一个序列都有一个关联的迭代器类型和一个创建新迭代器的方法。我们可以据此使用该迭代器来遍历序列。
+
+```swift
+struct ReverseArrayIndices<T>: Sequence {
+    let array: [T]
+    init(array: [T]) {
+        self.array = array
+    }
+    func makeIterator() -> ReverseIndexIterator {
+        return ReverseIndexIterator(array: array)
+    }
+}
+// 使用
+var array = ["one", "two", "three"]
+let reverseSequence = ReverseArrayIndices(array: array)
+var reverseIterator = reverseSequence.makeIterator()
+while let i = reverseIterator.next() {
+    print("Index \(i) is \(array[i])")
+}
+/*
+Index 2 is three
+Index 1 is two
+Index 0 is one
+*/
+```
+
+对比之前仅仅使用迭代器的例子，同一个序列可以被第二次遍历 —— 为此我们只需要调用 makeIterator() 来生成一个新的迭代器就可以了。通过在 Sequence 的定义中封装迭代器的创建过程，开发者在使用序列时不必再担心潜在的迭代器创建问题。这与面向对象理念中的将使用和创建进行分离的思想是一脉相承的，代码亦由此具有了更高的内聚性。
+
+上面的代码你也可以用for循环调用：
+
+```Swift
+for i in ReverseArrayIndices(array: array) {
+    print("Index \(i) is \(array[i])")
+}
+/*
+Index 2 is three
+Index 1 is two
+Index 0 is one
+*/
+```
+
+Swift 所做的只是使用 makeIterator() 方法生成了一个迭代器，然后重复地调用其 next 方法直到返回 nil。
+
+序列也具有标准的 map 和 filter 方法：
+
+```swift
+public protocol Sequence {
+    public func map<T>(
+    _ transform: (Iterator.Element) throws -> T)
+    rethrows -> [T]
+    public func filter(
+    _ isIncluded: (Iterator.Element) throws -> Bool)
+    rethrows -> [Iterator.Element]
+}
+```
+
+这些 map 和 filter 方法不会返回新的序列，而是遍历序列来生成一个数组。
+
+### 案例研究：解析器组合算子
+
+在试图将一系列符号 (通常是一组字符) 转换为结构化的数据时，解析器 (parser) 是一个非常有用的工具。
+
+###### 在实现这个解析器组合算子库的核心部分之前，我们需要先思考一个解析器实际上都要做些什么。通常而言，一个解析器会接收一组字符 (一个字符串) 作为输入，如果解析成功，则返回一些结果值与剩下的字符串。如果解析失败，则什么也不返回。我们可以将整个过程总结为一个像下面这样的函数类型：
+
+```swift
+typealias Parser<Result> = (String) -> (Result, String)?
+// 因为性能问题 所以用 Stream
+typealias Stream = String.CharacterView
+typealias Parser<Result> = (Stream) -> (Result, Stream)?
+
+struct Parser<Result> {
+    typealias Stream = String.CharacterView
+    let parse: (Stream) -> (Result, Stream)?
+    // 这是一个便利构造器
+    func character(matching condition: @escaping (Character) -> Bool)
+    -> Parser<Character> {
+        return Parser(parse: { input in
+        // ...
+        })
+    }
+    //比如这里判断第一个字符是否匹配 condition 中的条件
+    func character(condition: @escaping (Character) -> Bool) -> Parser<Character> {
+        return Parser { input in
+            guard let char = input.first, condition(char) else { return nil }
+            return (char, input.dropFirst())
+        }
+    }
+}
+// 测试方便在加入一个run扩展方法
+extension Parser {
+    func run(_ string: String) -> (Result, String)? {
+        guard let (result, remainder) = parse(string.characters) else { return nil }
+        return (result, String(remainder))
+    }
+}
+one.run("123") // Optional(("1", "23"))
+
+// 我们目的是检查数字而不是1，所以还需要写一个扩展
+// 为了检查某个字符是不是十进制数字，我们要用到标准库中的 CharacterSet 类。CharacterSet 的 contains 方法希望接收的是一个类型为 UnicodeScalar 的值，但我们希望检查的值的类型却是一个 Character。
+extension CharacterSet {
+    func contains(_ c: Character) -> Bool {
+        let scalars = String(c).unicodeScalars
+        guard scalars.count == 1 else { return false }
+        return contains(scalars.first!)
+    }
+}
+// 然后就变成这样了
+let digit = character { CharacterSet.decimalDigits.contains($0) }
+digit.run("456") // Optional(("4", "56"))
+```
+
+这样 一个原子的解析器就完成了，接下来就需要把它们组合起来变为更强大的解析器。首先，我们会创建一个组合算子 many，用于多次执行某个解析器并将解析结果作为一个数组返回。
+
+```swift
+extension Parser {
+    var many: Parser<[Result]> {
+    // ...
+    }
+}
+
+extension Parser {
+    var many: Parser<[Result]> {
+        return Parser<[Result]> { input in
+            var result: [Result] = []
+            var remainder = input
+            while let (element, newRemainder) = self.parse(remainder) {
+                result.append(element)
+                remainder = newRemainder
+            }
+        return (result, remainder)
+        }
+    }
+}
+digit.many.run("123") // Optional((["1", "2", "3"], ""))
+```
+
+既然我们可以将多个数字解析为一个字符串数组，那仅剩的步骤只是将字符数组转换为一个整数。为了完成这个任务，我们将为 Parser 定义一个 map 方法:
+
+```swift
+extension Parser {
+    func map<T>(_ transform: @escaping (Result) -> T) -> Parser<T> {
+        return Parser<T> { input in
+            guard let (result, remainder) = self.parse(input) else { return nil }
+            return (transform(result), remainder)
+        }
+    }
+}
+
+```
+
+那现在就可以完成我们想要的解析了
+
+```swift
+let integer = digit.many.map { Int(String($0))! }
+integer.run("123") // Optional((123, ""))
+integer.run("123abc") // Optional((123, "abc"))
+```
+
+#### 顺序解析
+
+其实我们有时候需要的是想要解析一个像 "2*3" 这样的乘法表达式，我们需要解析的是一个整数，接下来的符号 "*"，以及另一个整数。
+
+出于这个目的，我们将引入一个顺序组合算子 followed(by:)。就像实现 many 那样，我们将这个组合算子作为 Parser 的一个方法来实现。
+
+```swift
+extension Parser {
+    func followed<A>(by other: Parser<A>) -> Parser<(Result, A)> {
+        return Parser<(Result, A)> { input in
+            guard let (result1, remainder1) = self.parse(input) else { return nil }
+            guard let (result2, remainder2) = other.parse(remainder1)
+            else { return nil }
+            return ((result1, result2), remainder2)
+        }
+    }
+}
+let multiplication = integer
+.followed(by: character { $0 == "*" })
+.followed(by: integer)
+multiplication.run("2*3") // Optional((((2, "*"), 3), "")
+let multiplication2 = multiplication.map { $0.0 * $1 }
+multiplication2.run("2*3") // Optional((6, ""))
+```
+
