@@ -42,3 +42,7 @@ source 'https://github.com/CocoaPods/Specs.git' #官方仓库地址
 source ‘xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx’ #私有仓库地址
 
 这样就可以像用一般的库一样使用私有库了。
+
+
+
+看到一篇详细的文章：https://juejin.im/post/5b87494c51882542e16c0337
