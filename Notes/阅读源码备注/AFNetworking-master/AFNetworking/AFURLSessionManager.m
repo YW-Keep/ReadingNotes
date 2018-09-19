@@ -185,7 +185,7 @@ typedef void (^AFURLSessionTaskCompletionHandler)(NSURLResponse *response, id re
     }
     return self;
 }
-// dealloc的时候h移除y通知
+// dealloc的时候移除通知
 - (void)dealloc {
     [self.downloadProgress removeObserver:self forKeyPath:NSStringFromSelector(@selector(fractionCompleted))];
     [self.uploadProgress removeObserver:self forKeyPath:NSStringFromSelector(@selector(fractionCompleted))];
@@ -206,6 +206,8 @@ typedef void (^AFURLSessionTaskCompletionHandler)(NSURLResponse *response, id re
     }
 }
 
+// 下面这些代理方法 不是真代理 正代理 还是在AFURLSessionManager，只是在代理回调之后取出了相应的delegate 通过delegate
+
 #pragma mark - NSURLSessionTaskDelegate
 
 - (void)URLSession:(__unused NSURLSession *)session
@@ -215,11 +217,12 @@ didCompleteWithError:(NSError *)error
     __strong AFURLSessionManager *manager = self.manager;
 
     __block id responseObject = nil;
-
+    // 这个info 是发送通知所用的数据
     __block NSMutableDictionary *userInfo = [NSMutableDictionary dictionary];
     userInfo[AFNetworkingTaskDidCompleteResponseSerializerKey] = manager.responseSerializer;
 
     //Performance Improvement from #2672
+    
     NSData *data = nil;
     if (self.mutableData) {
         data = [self.mutableData copy];
@@ -234,16 +237,17 @@ didCompleteWithError:(NSError *)error
         }
     }
 #endif
-
+    // 如果返回存在则存入字典，如果返回的数据存在则也存入字典
     if (self.downloadFileURL) {
         userInfo[AFNetworkingTaskDidCompleteAssetPathKey] = self.downloadFileURL;
     } else if (data) {
         userInfo[AFNetworkingTaskDidCompleteResponseDataKey] = data;
     }
 
+    // 如果 有错误则把错误加入info里面 然后调用回调以及发送通知（又又 是钩子？）
     if (error) {
         userInfo[AFNetworkingTaskDidCompleteErrorKey] = error;
-
+        // 组请求 也是为了留钩子 使用者只需要加入group 就可以 实现组调用
         dispatch_group_async(manager.completionGroup ?: url_session_manager_completion_group(), manager.completionQueue ?: dispatch_get_main_queue(), ^{
             if (self.completionHandler) {
                 self.completionHandler(task.response, responseObject, error);
@@ -254,8 +258,10 @@ didCompleteWithError:(NSError *)error
             });
         });
     } else {
+        // 这是没有错误时候处理的迸发队列 防止堵住线程？
         dispatch_async(url_session_manager_processing_queue(), ^{
             NSError *serializationError = nil;
+            // 解析在这里
             responseObject = [manager.responseSerializer responseObjectForResponse:task.response data:data error:&serializationError];
 
             if (self.downloadFileURL) {
@@ -570,7 +576,7 @@ static NSString * const AFNSURLSessionTaskDidSuspendNotification = @"com.alamofi
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
-#pragma mark - 这里是task通知回调以及一个返回当前Session地址的方法
+#pragma mark - 这里是task通知回调以及一个返回当前Session地址的方法 这里其实也是一个倒钩
 
 - (NSString *)taskDescriptionForSessionTasks {
     return [NSString stringWithFormat:@"%p", self];
@@ -748,7 +754,7 @@ static NSString * const AFNSURLSessionTaskDidSuspendNotification = @"com.alamofi
     _responseSerializer = responseSerializer;
 }
 
-#pragma mark - 这里是t为task增加和移除通知
+#pragma mark - 这里是为task增加和移除通知
 - (void)addNotificationObserverForTask:(NSURLSessionTask *)task {
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(taskDidResume:) name:AFNSURLSessionTaskDidResumeNotification object:task];
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(taskDidSuspend:) name:AFNSURLSessionTaskDidSuspendNotification object:task];
@@ -1079,6 +1085,7 @@ willPerformHTTPRedirection:(NSHTTPURLResponse *)response
     }
 }
 
+// 证书相关 与上面的Session层代理相近 只是这里到task上了
 - (void)URLSession:(NSURLSession *)session
               task:(NSURLSessionTask *)task
 didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
@@ -1106,13 +1113,13 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
         completionHandler(disposition, credential);
     }
 }
-
+// 使用流方式上传会走这里
 - (void)URLSession:(NSURLSession *)session
               task:(NSURLSessionTask *)task
  needNewBodyStream:(void (^)(NSInputStream *bodyStream))completionHandler
 {
     NSInputStream *inputStream = nil;
-
+    // 钩子 提供给用户实现
     if (self.taskNeedNewBodyStream) {
         inputStream = self.taskNeedNewBodyStream(session, task);
     } else if (task.originalRequest.HTTPBodyStream && [task.originalRequest.HTTPBodyStream conformsToProtocol:@protocol(NSCopying)]) {
@@ -1124,14 +1131,16 @@ didReceiveChallenge:(NSURLAuthenticationChallenge *)challenge
     }
 }
 
+// 每次发送数据时会调用这个
 - (void)URLSession:(NSURLSession *)session
               task:(NSURLSessionTask *)task
    didSendBodyData:(int64_t)bytesSent
     totalBytesSent:(int64_t)totalBytesSent
 totalBytesExpectedToSend:(int64_t)totalBytesExpectedToSend
 {
-
+    // 预期发送的字节总数
     int64_t totalUnitCount = totalBytesExpectedToSend;
+    // 如果没有就 取 请求头里
     if(totalUnitCount == NSURLSessionTransferSizeUnknown) {
         NSString *contentLength = [task.originalRequest valueForHTTPHeaderField:@"Content-Length"];
         if(contentLength) {
@@ -1139,17 +1148,19 @@ totalBytesExpectedToSend:(int64_t)totalBytesExpectedToSend
         }
     }
     
+    // 获取这个delegate
     AFURLSessionManagerTaskDelegate *delegate = [self delegateForTask:task];
-    
+    // 传到找个delegate的方法里 更新
     if (delegate) {
         [delegate URLSession:session task:task didSendBodyData:bytesSent totalBytesSent:totalBytesSent totalBytesExpectedToSend:totalBytesExpectedToSend];
     }
-
+    // 又是钩子
     if (self.taskDidSendBodyData) {
         self.taskDidSendBodyData(session, task, bytesSent, totalBytesSent, totalUnitCount);
     }
 }
 
+// 请求完成之后调用
 - (void)URLSession:(NSURLSession *)session
               task:(NSURLSessionTask *)task
 didCompleteWithError:(NSError *)error
@@ -1159,10 +1170,10 @@ didCompleteWithError:(NSError *)error
     // delegate may be nil when completing a task in the background
     if (delegate) {
         [delegate URLSession:session task:task didCompleteWithError:error];
-
+        // 删除这个任务
         [self removeDelegateForTask:task];
     }
-
+    //  又是钩子
     if (self.taskDidComplete) {
         self.taskDidComplete(session, task, error);
     }
