@@ -60,6 +60,7 @@ FOUNDATION_EXPORT NSString * AFQueryStringFromParameters(NSDictionary *parameter
 
  For example, a JSON request serializer may set the HTTP body of the request to a JSON representation, and set the `Content-Type` HTTP header field value to `application/json`.
  */
+// 可以自己实现 RequestSerialization 但是要遵循该协议
 @protocol AFURLRequestSerialization <NSObject, NSSecureCoding, NSCopying>
 
 /**
@@ -93,11 +94,13 @@ typedef NS_ENUM(NSUInteger, AFHTTPRequestQueryStringSerializationStyle) {
 
  Any request or response serializer dealing with HTTP is encouraged to subclass `AFHTTPRequestSerializer` in order to ensure consistent default behavior.
  */
+// AF实现的默认请求序列化
 @interface AFHTTPRequestSerializer : NSObject <AFURLRequestSerialization>
 
 /**
  The string encoding used to serialize parameters. `NSUTF8StringEncoding` by default.
  */
+// 编码方式 默认为 NSUTF8StringEncoding
 @property (nonatomic, assign) NSStringEncoding stringEncoding;
 
 /**
@@ -105,6 +108,7 @@ typedef NS_ENUM(NSUInteger, AFHTTPRequestQueryStringSerializationStyle) {
 
  @see NSMutableURLRequest -setAllowsCellularAccess:
  */
+// 是否可以用设备设备的蜂窝无线访问 默认是
 @property (nonatomic, assign) BOOL allowsCellularAccess;
 
 /**
@@ -112,6 +116,7 @@ typedef NS_ENUM(NSUInteger, AFHTTPRequestQueryStringSerializationStyle) {
 
  @see NSMutableURLRequest -setCachePolicy:
  */
+// 缓存策略 默认使用 NSURLRequestUseProtocolCachePolicy
 @property (nonatomic, assign) NSURLRequestCachePolicy cachePolicy;
 
 /**
@@ -119,6 +124,7 @@ typedef NS_ENUM(NSUInteger, AFHTTPRequestQueryStringSerializationStyle) {
 
  @see NSMutableURLRequest -setHTTPShouldHandleCookies:
  */
+// 是否使用cookie
 @property (nonatomic, assign) BOOL HTTPShouldHandleCookies;
 
 /**
@@ -126,6 +132,7 @@ typedef NS_ENUM(NSUInteger, AFHTTPRequestQueryStringSerializationStyle) {
 
  @see NSMutableURLRequest -setHTTPShouldUsePipelining:
  */
+// 是否使用流水线技术（不太懂）
 @property (nonatomic, assign) BOOL HTTPShouldUsePipelining;
 
 /**
@@ -133,6 +140,7 @@ typedef NS_ENUM(NSUInteger, AFHTTPRequestQueryStringSerializationStyle) {
 
  @see NSMutableURLRequest -setNetworkServiceType:
  */
+// 网络类型
 @property (nonatomic, assign) NSURLRequestNetworkServiceType networkServiceType;
 
 /**
@@ -140,12 +148,13 @@ typedef NS_ENUM(NSUInteger, AFHTTPRequestQueryStringSerializationStyle) {
 
  @see NSMutableURLRequest -setTimeoutInterval:
  */
+// 超时时间
 @property (nonatomic, assign) NSTimeInterval timeoutInterval;
 
 ///---------------------------------------
 /// @name Configuring HTTP Request Headers
 ///---------------------------------------
-
+// 下面是配置请求头相关的
 /**
  Default HTTP header field values to be applied to serialized requests. By default, these include the following:
 
@@ -154,11 +163,13 @@ typedef NS_ENUM(NSUInteger, AFHTTPRequestQueryStringSerializationStyle) {
 
  @discussion To add or remove default request headers, use `setValue:forHTTPHeaderField:`.
  */
+// 获取全部请求头
 @property (readonly, nonatomic, strong) NSDictionary <NSString *, NSString *> *HTTPRequestHeaders;
 
 /**
  Creates and returns a serializer with default configuration.
  */
+// 获取一个默认状态的 AFHTTPRequestSerializer
 + (instancetype)serializer;
 
 /**
@@ -167,6 +178,7 @@ typedef NS_ENUM(NSUInteger, AFHTTPRequestQueryStringSerializationStyle) {
  @param field The HTTP header to set a default value for
  @param value The value set as default for the specified header, or `nil`
  */
+// 设置请求头
 - (void)setValue:(nullable NSString *)value
 forHTTPHeaderField:(NSString *)field;
 
@@ -177,6 +189,7 @@ forHTTPHeaderField:(NSString *)field;
 
  @return The value set as default for the specified header, or `nil`
  */
+// 获取某个请求头的值
 - (nullable NSString *)valueForHTTPHeaderField:(NSString *)field;
 
 /**
@@ -185,18 +198,20 @@ forHTTPHeaderField:(NSString *)field;
  @param username The HTTP basic auth username
  @param password The HTTP basic auth password
  */
+// 设置授权的账号密码值
 - (void)setAuthorizationHeaderFieldWithUsername:(NSString *)username
                                        password:(NSString *)password;
 
 /**
  Clears any existing value for the "Authorization" HTTP header.
  */
+// 清除改值
 - (void)clearAuthorizationHeader;
 
 ///-------------------------------------------------------
 /// @name Configuring Query String Parameter Serialization
 ///-------------------------------------------------------
-
+// 下面是序列化相关的
 /**
  HTTP methods for which serialized requests will encode parameters as a query string. `GET`, `HEAD`, and `DELETE` by default.
  */

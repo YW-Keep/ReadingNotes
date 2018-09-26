@@ -35,7 +35,9 @@ AFURLSessionManager是AF的核心类，主要的作用就是发送请求，发�
 
 最后AFURLSessionManager，做了很多通知等，会发现有大量的钩子，提供给用户使用。
 
+#### AFURLRequestSerialization
 
+这是一个请求的序列化器 一般会通过URL与parameters 生成request  当然生成request 过程中还是有很多配置的，都可以在AFURLRequestSerialization里设置，典型的有编码方式等等。
 
 
 
