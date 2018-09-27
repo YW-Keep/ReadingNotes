@@ -203,6 +203,7 @@ static void AFNetworkReachabilityReleaseCallback(const void *info) {
 #pragma mark -
 
 - (void)startMonitoring {
+    // 开始前先调用 结束的 防止多次添加？
     [self stopMonitoring];
 
     if (!self.networkReachability) {
@@ -221,9 +222,11 @@ static void AFNetworkReachabilityReleaseCallback(const void *info) {
     };
 
     SCNetworkReachabilityContext context = {0, (__bridge void *)callback, AFNetworkReachabilityRetainCallback, AFNetworkReachabilityReleaseCallback, NULL};
+    //设置回调
     SCNetworkReachabilitySetCallback(self.networkReachability, AFNetworkReachabilityCallback, &context);
+    // 把任务加入到runloop中
     SCNetworkReachabilityScheduleWithRunLoop(self.networkReachability, CFRunLoopGetMain(), kCFRunLoopCommonModes);
-
+    // 开始之后立马能出发一 网络回调使用 dispatch_get_global_queue 这是系统开的队列， DISPATCH_QUEUE_PRIORITY_BACKGROUND表示优先级最低
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_BACKGROUND, 0),^{
         SCNetworkReachabilityFlags flags;
         if (SCNetworkReachabilityGetFlags(self.networkReachability, &flags)) {
@@ -236,7 +239,8 @@ static void AFNetworkReachabilityReleaseCallback(const void *info) {
     if (!self.networkReachability) {
         return;
     }
-
+    
+    // 从 runloop 移除监听
     SCNetworkReachabilityUnscheduleFromRunLoop(self.networkReachability, CFRunLoopGetMain(), kCFRunLoopCommonModes);
 }
 
@@ -253,7 +257,7 @@ static void AFNetworkReachabilityReleaseCallback(const void *info) {
 }
 
 #pragma mark - NSKeyValueObserving
-
+//   键值关联 感觉这块代码 没啥用了
 + (NSSet *)keyPathsForValuesAffectingValueForKey:(NSString *)key {
     if ([key isEqualToString:@"reachable"] || [key isEqualToString:@"reachableViaWWAN"] || [key isEqualToString:@"reachableViaWiFi"]) {
         return [NSSet setWithObject:@"networkReachabilityStatus"];

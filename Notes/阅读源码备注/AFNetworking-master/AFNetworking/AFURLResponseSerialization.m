@@ -61,6 +61,7 @@ static BOOL AFErrorOrUnderlyingErrorHasCodeInDomain(NSError *error, NSInteger co
 }
 
 id AFJSONObjectByRemovingKeysWithNullValues(id JSONObject, NSJSONReadingOptions readingOptions) {
+    // 递归排空
     if ([JSONObject isKindOfClass:[NSArray class]]) {
         NSMutableArray *mutableArray = [NSMutableArray arrayWithCapacity:[(NSArray *)JSONObject count]];
         for (id value in (NSArray *)JSONObject) {
@@ -114,26 +115,30 @@ id AFJSONObjectByRemovingKeysWithNullValues(id JSONObject, NSJSONReadingOptions 
     BOOL responseIsValid = YES;
     NSError *validationError = nil;
 
+    // 响应存在的话
     if (response && [response isKindOfClass:[NSHTTPURLResponse class]]) {
+        //验证验证返回的数据类型是否正确；JSON的解析器在初始化时设置了self.acceptableContentTypes = [NSSet setWithObjects:@"application/json", @"text/json", @"text/javascript", nil];的类型支持；这里的判断条件是服务端返回的数据类型存在，且数据不为空，但是类型却不在初始化指定的几种类型中
         if (self.acceptableContentTypes && ![self.acceptableContentTypes containsObject:[response MIMEType]] &&
             !([response MIMEType] == nil && [data length] == 0)) {
-
+            //此时数据类型验证不通过，如果返回有数据则需要封装返回结果的错误信息字典内容
             if ([data length] > 0 && [response URL]) {
                 NSMutableDictionary *mutableUserInfo = [@{
                                                           NSLocalizedDescriptionKey: [NSString stringWithFormat:NSLocalizedStringFromTable(@"Request failed: unacceptable content-type: %@", @"AFNetworking", nil), [response MIMEType]],
                                                           NSURLErrorFailingURLErrorKey:[response URL],
                                                           AFNetworkingOperationFailingURLResponseErrorKey: response,
                                                         } mutableCopy];
+                // 这个date 存在的判断t应该是多余的
                 if (data) {
                     mutableUserInfo[AFNetworkingOperationFailingURLResponseDataErrorKey] = data;
                 }
-
+                // 设置解析数据错误
                 validationError = AFErrorWithUnderlyingError([NSError errorWithDomain:AFURLResponseSerializationErrorDomain code:NSURLErrorCannotDecodeContentData userInfo:mutableUserInfo], validationError);
             }
 
             responseIsValid = NO;
         }
-
+        //对返回的状态码进行验证，状态码的初始化设置为self.acceptableStatusCodes = [NSIndexSet indexSetWithIndexesInRange:NSMakeRange(200, 100)]; 如果返回的状态码不在初始化的这个集合中，则验证失败，可以理解为200开头的状态码都是请求成功的情况，其他情况都属于请求失败了
+        
         if (self.acceptableStatusCodes && ![self.acceptableStatusCodes containsIndex:(NSUInteger)response.statusCode] && [response URL]) {
             NSMutableDictionary *mutableUserInfo = [@{
                                                NSLocalizedDescriptionKey: [NSString stringWithFormat:NSLocalizedStringFromTable(@"Request failed: %@ (%ld)", @"AFNetworking", nil), [NSHTTPURLResponse localizedStringForStatusCode:response.statusCode], (long)response.statusCode],
@@ -151,10 +156,11 @@ id AFJSONObjectByRemovingKeysWithNullValues(id JSONObject, NSJSONReadingOptions 
         }
     }
 
+    // 这里把错误封装好 给上层
     if (error && !responseIsValid) {
         *error = validationError;
     }
-
+    // 返回对应的结果
     return responseIsValid;
 }
 
@@ -224,7 +230,7 @@ id AFJSONObjectByRemovingKeysWithNullValues(id JSONObject, NSJSONReadingOptions 
     if (!self) {
         return nil;
     }
-
+    // 设置能解析的类型
     self.acceptableContentTypes = [NSSet setWithObjects:@"application/json", @"text/json", @"text/javascript", nil];
 
     return self;
@@ -236,7 +242,9 @@ id AFJSONObjectByRemovingKeysWithNullValues(id JSONObject, NSJSONReadingOptions 
                            data:(NSData *)data
                           error:(NSError *__autoreleasing *)error
 {
+    //  对数据进行基础的验证 调用的是父类的方法
     if (![self validateResponse:(NSHTTPURLResponse *)response data:data error:error]) {
+        // 如果error为空，或者遇到不能解析数据的错误直接返回nil
         if (!error || AFErrorOrUnderlyingErrorHasCodeInDomain(*error, NSURLErrorCannotDecodeContentData, AFURLResponseSerializationErrorDomain)) {
             return nil;
         }
@@ -245,23 +253,22 @@ id AFJSONObjectByRemovingKeysWithNullValues(id JSONObject, NSJSONReadingOptions 
     // Workaround for behavior of Rails to return a single space for `head :ok` (a workaround for a bug in Safari), which is not interpreted as valid input by NSJSONSerialization.
     // See https://github.com/rails/rails/issues/1742
     BOOL isSpace = [data isEqualToData:[NSData dataWithBytes:" " length:1]];
-    
+    // 没有数据则不能解析
     if (data.length == 0 || isSpace) {
         return nil;
     }
     
     NSError *serializationError = nil;
-    
+    // 调用系统的方法解析Json数据
     id responseObject = [NSJSONSerialization JSONObjectWithData:data options:self.readingOptions error:&serializationError];
-
+    // 如果解析后的responseObject没有的话那么去看看是否赋值error 然后返回nil
     if (!responseObject)
     {
         if (error) {
             *error = AFErrorWithUnderlyingError(serializationError, *error);
         }
         return nil;
-    }
-    
+    }     // 是否需要移除Null 默认是NO  如果开启了 会把空的字段过滤掉
     if (self.removesKeysWithNullValues) {
         return AFJSONObjectByRemovingKeysWithNullValues(responseObject, self.readingOptions);
     }

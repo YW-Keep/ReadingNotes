@@ -31,6 +31,7 @@ typedef NS_ENUM(NSInteger, AFNetworkReachabilityStatus) {
     AFNetworkReachabilityStatusReachableViaWiFi = 2,
 };
 
+// 这个宏就是表示不会出现为空的属性
 NS_ASSUME_NONNULL_BEGIN
 
 /**
@@ -43,6 +44,7 @@ NS_ASSUME_NONNULL_BEGIN
  @warning Instances of `AFNetworkReachabilityManager` must be started with `-startMonitoring` before reachability status can be determined.
  */
 @interface AFNetworkReachabilityManager : NSObject
+// 下面一些网络可读的属性
 
 /**
  The current network reachability status.
@@ -67,7 +69,7 @@ NS_ASSUME_NONNULL_BEGIN
 ///---------------------
 /// @name Initialization
 ///---------------------
-
+// 创建方法
 /**
  Returns the shared network reachability manager.
  */
@@ -120,12 +122,13 @@ NS_ASSUME_NONNULL_BEGIN
 ///--------------------------------------------------
 /// @name Starting & Stopping Reachability Monitoring
 ///--------------------------------------------------
-
+// 开始监测网络变化
 /**
  Starts monitoring for changes in network reachability status.
  */
 - (void)startMonitoring;
 
+// 停止监测
 /**
  Stops monitoring for changes in network reachability status.
  */
@@ -138,6 +141,7 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  Returns a localized string representation of the current network reachability status.
  */
+// 返回当前网络状态的字符串
 - (NSString *)localizedNetworkReachabilityStatusString;
 
 ///---------------------------------------------------
@@ -149,6 +153,7 @@ NS_ASSUME_NONNULL_BEGIN
 
  @param block A block object to be executed when the network availability of the `baseURL` host changes.. This block has no return value and takes a single argument which represents the various reachability states from the device to the `baseURL`.
  */
+// 网络状态改变后的b回调
 - (void)setReachabilityStatusChangeBlock:(nullable void (^)(AFNetworkReachabilityStatus status))block;
 
 @end
@@ -200,6 +205,9 @@ NS_ASSUME_NONNULL_BEGIN
 
  @warning In order for network reachability to be monitored, include the `SystemConfiguration` framework in the active target's "Link Binary With Library" build phase, and add `#import <SystemConfiguration/SystemConfiguration.h>` to the header prefix of the project (`Prefix.pch`).
  */
+// FOUNDATION_EXPORT是来定义常量的 与 #define AFNetworkingReachabilityDidChangeNotification @"Hello" 其实是一样的
+// 只是 #define AFNetworkingReachabilityDidChangeNotification @"Hello" 这样定义的效率低而已 比较的时候 FOUNDATION_EXPORT 可以直接==比较
+
 FOUNDATION_EXPORT NSString * const AFNetworkingReachabilityDidChangeNotification;
 FOUNDATION_EXPORT NSString * const AFNetworkingReachabilityNotificationStatusItem;
 

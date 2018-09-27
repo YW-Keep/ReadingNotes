@@ -78,6 +78,7 @@ id AFJSONObjectByRemovingKeysWithNullValues(id JSONObject, NSJSONReadingOptions 
 
  See http://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html
  */
+// 响应可接受的状态码
 @property (nonatomic, copy, nullable) NSIndexSet *acceptableStatusCodes;
 
 /**
