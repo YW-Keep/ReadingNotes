@@ -80,6 +80,7 @@ _out:
     return allowedPublicKey;
 }
 
+// 证书是否有效
 static BOOL AFServerTrustIsValid(SecTrustRef serverTrust) {
     BOOL isValid = NO;
     SecTrustResultType result;
@@ -223,6 +224,7 @@ static NSArray * AFPublicKeyTrustChainForServerTrust(SecTrustRef serverTrust) {
 - (BOOL)evaluateServerTrust:(SecTrustRef)serverTrust
                   forDomain:(NSString *)domain
 {
+    // 这个条件表示你使用的是自建证书，但是又设置的不对 模式不对 或者 证书的数量为0
     if (domain && self.allowInvalidCertificates && self.validatesDomainName && (self.SSLPinningMode == AFSSLPinningModeNone || [self.pinnedCertificates count] == 0)) {
         // https://developer.apple.com/library/mac/documentation/NetworkingInternet/Conceptual/NetworkingTopics/Articles/OverridingSSLChainValidationCorrectly.html
         //  According to the docs, you should only trust your provided certs for evaluation.
@@ -242,15 +244,17 @@ static NSArray * AFPublicKeyTrustChainForServerTrust(SecTrustRef serverTrust) {
     } else {
         [policies addObject:(__bridge_transfer id)SecPolicyCreateBasicX509()];
     }
-
+    
+    // 设置策略
     SecTrustSetPolicies(serverTrust, (__bridge CFArrayRef)policies);
-
+    // 在 self.SSLPinningMode == AFSSLPinningModeNone 的情况下 只要信任具有无效或过期SSL证书的服务器 或者检查证书是有效的就可以了
+    // 而其他情况下 如果不信任具有无效或过期SSL证书的服务器 且 证书无效 则直接返回NO
     if (self.SSLPinningMode == AFSSLPinningModeNone) {
         return self.allowInvalidCertificates || AFServerTrustIsValid(serverTrust);
     } else if (!AFServerTrustIsValid(serverTrust) && !self.allowInvalidCertificates) {
         return NO;
     }
-
+    //  第一种情况以及
     switch (self.SSLPinningMode) {
         case AFSSLPinningModeNone:
         default:
@@ -260,24 +264,28 @@ static NSArray * AFPublicKeyTrustChainForServerTrust(SecTrustRef serverTrust) {
             for (NSData *certificateData in self.pinnedCertificates) {
                 [pinnedCertificates addObject:(__bridge_transfer id)SecCertificateCreateWithData(NULL, (__bridge CFDataRef)certificateData)];
             }
+            // 设置其他证书
             SecTrustSetAnchorCertificates(serverTrust, (__bridge CFArrayRef)pinnedCertificates);
 
+            // 如果证书无效 返回NO
             if (!AFServerTrustIsValid(serverTrust)) {
                 return NO;
             }
 
             // obtain the chain after being validated, which *should* contain the pinned certificate in the last position (if it's the Root CA)
+            // 获取证书链
             NSArray *serverCertificates = AFCertificateTrustChainForServerTrust(serverTrust);
-            
+            // 反向枚举 如果证书包含相应的证书 则验证成功
             for (NSData *trustChainCertificate in [serverCertificates reverseObjectEnumerator]) {
                 if ([self.pinnedCertificates containsObject:trustChainCertificate]) {
                     return YES;
                 }
             }
-            
+            // 没有包含相应的证书 则返回
             return NO;
         }
         case AFSSLPinningModePublicKey: {
+            // 这是验证公钥
             NSUInteger trustedPublicKeyCount = 0;
             NSArray *publicKeys = AFPublicKeyTrustChainForServerTrust(serverTrust);
 

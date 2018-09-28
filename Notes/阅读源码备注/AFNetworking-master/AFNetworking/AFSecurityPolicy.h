@@ -41,6 +41,7 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  The criteria by which server trust should be evaluated against the pinned SSL certificates. Defaults to `AFSSLPinningModeNone`.
  */
+// 证书校验的方式
 @property (readonly, nonatomic, assign) AFSSLPinningMode SSLPinningMode;
 
 /**
@@ -50,16 +51,19 @@ NS_ASSUME_NONNULL_BEGIN
  
  Note that if pinning is enabled, `evaluateServerTrust:forDomain:` will return true if any pinned certificate matches.
  */
+// 存放自定义证书的集合
 @property (nonatomic, strong, nullable) NSSet <NSData *> *pinnedCertificates;
 
 /**
  Whether or not to trust servers with an invalid or expired SSL certificates. Defaults to `NO`.
  */
+// 是否信任具有无效或过期SSL证书的服务器。默认否
 @property (nonatomic, assign) BOOL allowInvalidCertificates;
 
 /**
  Whether or not to validate the domain name in the certificate's CN field. Defaults to `YES`.
  */
+// 是否校验CA证书的域名 默认是
 @property (nonatomic, assign) BOOL validatesDomainName;
 
 ///-----------------------------------------
@@ -82,6 +86,7 @@ NS_ASSUME_NONNULL_BEGIN
 
  @return The default security policy.
  */
+// 返回共享默认安全策略，该策略不允许无效证书，验证域名，并且不针对固定的证书或公钥进行验证。
 + (instancetype)defaultPolicy;
 
 ///---------------------
@@ -121,6 +126,7 @@ NS_ASSUME_NONNULL_BEGIN
 
  @return Whether or not to trust the server.
  */
+// 核心校验方法
 - (BOOL)evaluateServerTrust:(SecTrustRef)serverTrust
                   forDomain:(nullable NSString *)domain;
 

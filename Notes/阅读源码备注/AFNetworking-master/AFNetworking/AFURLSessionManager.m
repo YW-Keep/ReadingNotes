@@ -530,7 +530,7 @@ static NSString * const AFNSURLSessionTaskDidSuspendNotification = @"com.alamofi
     }
 
     self.sessionConfiguration = configuration;
-    // 创建回调线程 并且设置并发量为1 ？应该是为了顺序回调？
+    // 创建回调线程 这里delegateQueue 需要传入一个队列，用于回调，官方注解说需要一个串行队列，如果传入nil就自动创建一个队列。所以这里最大迸发数为1从而达到串行队列的目的。
     self.operationQueue = [[NSOperationQueue alloc] init];
     self.operationQueue.maxConcurrentOperationCount = 1;
 
