@@ -317,6 +317,7 @@ static void *AFHTTPRequestSerializerObserverContext = &AFHTTPRequestSerializerOb
 forHTTPHeaderField:(NSString *)field
 {
     // 这里 用了dispatch_barrier_async是因为... 好吧 感觉没啥用 感觉用串行队列 或者所有都是同步添加效果是一样的？
+    //在多个线程同时操作一个对象的时候，读可以放在并发进行，当写的时候，我们就可以用dispatch_barrier_async方法，效果杠杠的
     dispatch_barrier_async(self.requestHeaderModificationQueue, ^{
         [self.mutableHTTPRequestHeaders setValue:value forKey:field];
     });
