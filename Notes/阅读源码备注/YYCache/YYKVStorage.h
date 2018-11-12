@@ -13,18 +13,19 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+// 这个是用来存贮的数据类
 /**
  YYKVStorageItem is used by `YYKVStorage` to store key-value pair and meta data.
  Typically, you should not use this class directly.
  */
 @interface YYKVStorageItem : NSObject
-@property (nonatomic, strong) NSString *key;                ///< key
-@property (nonatomic, strong) NSData *value;                ///< value
-@property (nullable, nonatomic, strong) NSString *filename; ///< filename (nil if inline)
-@property (nonatomic) int size;                             ///< value's size in bytes
-@property (nonatomic) int modTime;                          ///< modification unix timestamp
-@property (nonatomic) int accessTime;                       ///< last access unix timestamp
-@property (nullable, nonatomic, strong) NSData *extendedData; ///< extended data (nil if no extended data)
+@property (nonatomic, strong) NSString *key;                ///< key  键
+@property (nonatomic, strong) NSData *value;                ///< value 值
+@property (nullable, nonatomic, strong) NSString *filename; ///< filename (nil if inline)  路径地址
+@property (nonatomic) int size;                             ///< value's size in bytes     大小
+@property (nonatomic) int modTime;                          ///< modification unix timestampd修改时间
+@property (nonatomic) int accessTime;                       ///< last access unix timestamp  访问时间
+@property (nullable, nonatomic, strong) NSData *extendedData; ///< extended data (nil if no extended data) 额外的数据
 @end
 
 /**
@@ -79,15 +80,18 @@ typedef NS_ENUM(NSUInteger, YYKVStorageType) {
 ///=============================================================================
 /// @name Attribute
 ///=============================================================================
-
+// 存储路径
 @property (nonatomic, readonly) NSString *path;        ///< The path of this storage.
+// 存储方式
 @property (nonatomic, readonly) YYKVStorageType type;  ///< The type of this storage.
+// 是否打印日志
 @property (nonatomic) BOOL errorLogsEnabled;           ///< Set `YES` to enable error logs for debug.
 
 #pragma mark - Initializer
 ///=============================================================================
 /// @name Initializer
 ///=============================================================================
+// 这两个方法被封，表示不可用
 - (instancetype)init UNAVAILABLE_ATTRIBUTE;
 + (instancetype)new UNAVAILABLE_ATTRIBUTE;
 
@@ -102,10 +106,12 @@ typedef NS_ENUM(NSUInteger, YYKVStorageType) {
  @return  A new storage object, or nil if an error occurs.
  @warning Multiple instances with the same path will make the storage unstable.
  */
+// 默认创建的方法。
 - (nullable instancetype)initWithPath:(NSString *)path type:(YYKVStorageType)type NS_DESIGNATED_INITIALIZER;
 
 
 #pragma mark - Save Items
+// 一系列存存储方法
 ///=============================================================================
 /// @name Save Items
 ///=============================================================================
@@ -161,6 +167,7 @@ typedef NS_ENUM(NSUInteger, YYKVStorageType) {
            extendedData:(nullable NSData *)extendedData;
 
 #pragma mark - Remove Items
+// 一系列删除方法
 ///=============================================================================
 /// @name Remove Items
 ///=============================================================================
@@ -239,6 +246,7 @@ typedef NS_ENUM(NSUInteger, YYKVStorageType) {
 
 
 #pragma mark - Get Items
+// 一系列获取数据的item的方法
 ///=============================================================================
 /// @name Get Items
 ///=============================================================================
@@ -306,18 +314,21 @@ typedef NS_ENUM(NSUInteger, YYKVStorageType) {
  
  @return `YES` if there's an item exists for the key, `NO` if not exists or an error occurs.
  */
+// 判断item 是否存在
 - (BOOL)itemExistsForKey:(NSString *)key;
 
 /**
  Get total item count.
  @return Total item count, -1 when an error occurs.
  */
+// 缓存个数
 - (int)getItemsCount;
 
 /**
  Get item value's total size in bytes.
  @return Total size in bytes, -1 when an error occurs.
  */
+// 缓存大小
 - (int)getItemsSize;
 
 @end

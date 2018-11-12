@@ -44,19 +44,20 @@ static NSString *const kTrashDirectoryName = @"trash";
  
  SQL:
  create table if not exists manifest (
-    key                 text,
-    filename            text,
-    size                integer,
-    inline_data         blob,
-    modification_time   integer,
-    last_access_time    integer,
-    extended_data       blob,
+    key                 text,  // key值
+    filename            text,  //  文件名
+    size                integer, // 文件大小
+    inline_data         blob,    //  数据 (有文件名表示文件存储，数据没有值，)
+    modification_time   integer, // 修改时间
+    last_access_time    integer, // 访问时间
+    extended_data       blob,    // 额外的数据
     primary key(key)
  ); 
  create index if not exists last_access_time_idx on manifest(last_access_time);
  */
 
 /// Returns nil in App Extension.
+// 这个方法是为了获得UIApplication 如果是在APP中
 static UIApplication *_YYSharedApplication() {
     static BOOL isAppExtension = NO;
     static dispatch_once_t onceToken;
@@ -78,7 +79,6 @@ static UIApplication *_YYSharedApplication() {
 @implementation YYKVStorage {
     dispatch_queue_t _trashQueue;
     
-    NSString *_path;
     NSString *_dbPath;
     NSString *_dataPath;
     NSString *_trashPath;
@@ -93,10 +93,13 @@ static UIApplication *_YYSharedApplication() {
 #pragma mark - db
 
 - (BOOL)_dbOpen {
+    // 判断数库是否打开
     if (_db) return YES;
-    
+    // 打开当前路径的数据库
     int result = sqlite3_open(_dbPath.UTF8String, &_db);
+    // 判断数据库是否打开
     if (result == SQLITE_OK) {
+    // 这是打开成功  设置了一个 CFDictionaryCreateMutable  打开错误时间设置了0 打开错误次数设置了0
         CFDictionaryKeyCallBacks keyCallbacks = kCFCopyStringDictionaryKeyCallBacks;
         CFDictionaryValueCallBacks valueCallbacks = {0};
         _dbStmtCache = CFDictionaryCreateMutable(CFAllocatorGetDefault(), 0, &keyCallbacks, &valueCallbacks);
@@ -104,10 +107,14 @@ static UIApplication *_YYSharedApplication() {
         _dbOpenErrorCount = 0;
         return YES;
     } else {
+        // 打开失败
         _db = NULL;
+        // 清除了 _dbStmtCache 数据
         if (_dbStmtCache) CFRelease(_dbStmtCache);
         _dbStmtCache = NULL;
+        // 错误时间设置了当前时间
         _dbLastOpenErrorTime = CACurrentMediaTime();
+        // 错误次数加一
         _dbOpenErrorCount++;
         
         if (_errorLogsEnabled) {
@@ -117,6 +124,7 @@ static UIApplication *_YYSharedApplication() {
     }
 }
 
+// 关闭数据库
 - (BOOL)_dbClose {
     if (!_db) return YES;
     
@@ -130,16 +138,19 @@ static UIApplication *_YYSharedApplication() {
     do {
         retry = NO;
         result = sqlite3_close(_db);
+        // 如果数据库正忙 则关闭当前的指针
         if (result == SQLITE_BUSY || result == SQLITE_LOCKED) {
             if (!stmtFinalized) {
                 stmtFinalized = YES;
                 sqlite3_stmt *stmt;
                 while ((stmt = sqlite3_next_stmt(_db, nil)) != 0) {
+                    // 关闭相应的指针
                     sqlite3_finalize(stmt);
                     retry = YES;
                 }
             }
         } else if (result != SQLITE_OK) {
+            //如果报错则打印错误
             if (_errorLogsEnabled) {
                 NSLog(@"%s line:%d sqlite close failed (%d).", __FUNCTION__, __LINE__, result);
             }
@@ -149,8 +160,10 @@ static UIApplication *_YYSharedApplication() {
     return YES;
 }
 
+// 检查是否存在  
 - (BOOL)_dbCheck {
     if (!_db) {
+        // 如果打开次数小于8 且 打开错误时间比当前时间大2秒 则再次尝试打开
         if (_dbOpenErrorCount < kMaxErrorRetryCount &&
             CACurrentMediaTime() - _dbLastOpenErrorTime > kMinRetryTimeInterval) {
             return [self _dbOpen] && [self _dbInitialize];
@@ -161,17 +174,20 @@ static UIApplication *_YYSharedApplication() {
     return YES;
 }
 
+// 这是执行sql语句创建一张表 如果存在不创建
 - (BOOL)_dbInitialize {
     NSString *sql = @"pragma journal_mode = wal; pragma synchronous = normal; create table if not exists manifest (key text, filename text, size integer, inline_data blob, modification_time integer, last_access_time integer, extended_data blob, primary key(key)); create index if not exists last_access_time_idx on manifest(last_access_time);";
     return [self _dbExecute:sql];
 }
 
+// 合并点
 - (void)_dbCheckpoint {
     if (![self _dbCheck]) return;
     // Cause a checkpoint to occur, merge `sqlite-wal` file to `sqlite` file.
     sqlite3_wal_checkpoint(_db, NULL);
 }
 
+// 这个方法是执行sql语句
 - (BOOL)_dbExecute:(NSString *)sql {
     if (sql.length == 0) return NO;
     if (![self _dbCheck]) return NO;
@@ -185,7 +201,7 @@ static UIApplication *_YYSharedApplication() {
     
     return result == SQLITE_OK;
 }
-
+// 预执行语句
 - (sqlite3_stmt *)_dbPrepareStmt:(NSString *)sql {
     if (![self _dbCheck] || sql.length == 0 || !_dbStmtCache) return NULL;
     sqlite3_stmt *stmt = (sqlite3_stmt *)CFDictionaryGetValue(_dbStmtCache, (__bridge const void *)(sql));
@@ -219,7 +235,7 @@ static UIApplication *_YYSharedApplication() {
         sqlite3_bind_text(stmt, index + i, key.UTF8String, -1, NULL);
     }
 }
-
+// 这是核心的写入方法。
 - (BOOL)_dbSaveWithKey:(NSString *)key value:(NSData *)value fileName:(NSString *)fileName extendedData:(NSData *)extendedData {
     NSString *sql = @"insert or replace into manifest (key, filename, size, inline_data, modification_time, last_access_time, extended_data) values (?1, ?2, ?3, ?4, ?5, ?6, ?7);";
     sqlite3_stmt *stmt = [self _dbPrepareStmt:sql];
@@ -245,7 +261,7 @@ static UIApplication *_YYSharedApplication() {
     }
     return YES;
 }
-
+// 更新访问日期
 - (BOOL)_dbUpdateAccessTimeWithKey:(NSString *)key {
     NSString *sql = @"update manifest set last_access_time = ?1 where key = ?2;";
     sqlite3_stmt *stmt = [self _dbPrepareStmt:sql];
@@ -282,6 +298,7 @@ static UIApplication *_YYSharedApplication() {
     return YES;
 }
 
+// 数据库中删除某个key值
 - (BOOL)_dbDeleteItemWithKey:(NSString *)key {
     NSString *sql = @"delete from manifest where key = ?1;";
     sqlite3_stmt *stmt = [self _dbPrepareStmt:sql];
@@ -296,6 +313,7 @@ static UIApplication *_YYSharedApplication() {
     return YES;
 }
 
+// 删除多个key 上面那个数组形式
 - (BOOL)_dbDeleteItemWithKeys:(NSArray *)keys {
     if (![self _dbCheck]) return NO;
     NSString *sql =  [NSString stringWithFormat:@"delete from manifest where key in (%@);", [self _dbJoinedKeys:keys]];
@@ -316,6 +334,7 @@ static UIApplication *_YYSharedApplication() {
     return YES;
 }
 
+// 删除大于某个值的缓存
 - (BOOL)_dbDeleteItemsWithSizeLargerThan:(int)size {
     NSString *sql = @"delete from manifest where size > ?1;";
     sqlite3_stmt *stmt = [self _dbPrepareStmt:sql];
@@ -329,6 +348,7 @@ static UIApplication *_YYSharedApplication() {
     return YES;
 }
 
+// 删除时间早于某个值的缓存
 - (BOOL)_dbDeleteItemsWithTimeEarlierThan:(int)time {
     NSString *sql = @"delete from manifest where last_access_time < ?1;";
     sqlite3_stmt *stmt = [self _dbPrepareStmt:sql];
@@ -365,6 +385,7 @@ static UIApplication *_YYSharedApplication() {
     return item;
 }
 
+// 根据key 去获取数据，还转化成了YYKVStorageItem
 - (YYKVStorageItem *)_dbGetItemWithKey:(NSString *)key excludeInlineData:(BOOL)excludeInlineData {
     NSString *sql = excludeInlineData ? @"select key, filename, size, modification_time, last_access_time, extended_data from manifest where key = ?1;" : @"select key, filename, size, inline_data, modification_time, last_access_time, extended_data from manifest where key = ?1;";
     sqlite3_stmt *stmt = [self _dbPrepareStmt:sql];
@@ -382,7 +403,7 @@ static UIApplication *_YYSharedApplication() {
     }
     return item;
 }
-
+// 根据key去获取相应的item组
 - (NSMutableArray *)_dbGetItemWithKeys:(NSArray *)keys excludeInlineData:(BOOL)excludeInlineData {
     if (![self _dbCheck]) return nil;
     NSString *sql;
@@ -418,6 +439,7 @@ static UIApplication *_YYSharedApplication() {
     return items;
 }
 
+// 直接从数据库中拿出某个值
 - (NSData *)_dbGetValueWithKey:(NSString *)key {
     NSString *sql = @"select inline_data from manifest where key = ?1;";
     sqlite3_stmt *stmt = [self _dbPrepareStmt:sql];
@@ -437,7 +459,7 @@ static UIApplication *_YYSharedApplication() {
         return nil;
     }
 }
-
+// 读取文件名 根据某个key
 - (NSString *)_dbGetFilenameWithKey:(NSString *)key {
     NSString *sql = @"select filename from manifest where key = ?1;";
     sqlite3_stmt *stmt = [self _dbPrepareStmt:sql];
@@ -457,6 +479,7 @@ static UIApplication *_YYSharedApplication() {
     return nil;
 }
 
+// 拿到一堆文件名 上面那个的数组操作形式
 - (NSMutableArray *)_dbGetFilenameWithKeys:(NSArray *)keys {
     if (![self _dbCheck]) return nil;
     NSString *sql = [NSString stringWithFormat:@"select filename from manifest where key in (%@);", [self _dbJoinedKeys:keys]];
@@ -514,7 +537,7 @@ static UIApplication *_YYSharedApplication() {
     } while (1);
     return filenames;
 }
-
+// 获取时间早于某个时间的缓存
 - (NSMutableArray *)_dbGetFilenamesWithTimeEarlierThan:(int)time {
     NSString *sql = @"select filename from manifest where last_access_time < ?1 and filename is not null;";
     sqlite3_stmt *stmt = [self _dbPrepareStmt:sql];
@@ -541,6 +564,7 @@ static UIApplication *_YYSharedApplication() {
     return filenames;
 }
 
+// 按照时间顺序获取缓存表
 - (NSMutableArray *)_dbGetItemSizeInfoOrderByTimeAscWithLimit:(int)count {
     NSString *sql = @"select key, filename, size from manifest order by last_access_time asc limit ?1;";
     sqlite3_stmt *stmt = [self _dbPrepareStmt:sql];
@@ -573,6 +597,7 @@ static UIApplication *_YYSharedApplication() {
     return items;
 }
 
+// 某个key值的缓存条数
 - (int)_dbGetItemCountWithKey:(NSString *)key {
     NSString *sql = @"select count(key) from manifest where key = ?1;";
     sqlite3_stmt *stmt = [self _dbPrepareStmt:sql];
@@ -586,6 +611,7 @@ static UIApplication *_YYSharedApplication() {
     return sqlite3_column_int(stmt, 0);
 }
 
+// 总的size
 - (int)_dbGetTotalItemSize {
     NSString *sql = @"select sum(size) from manifest;";
     sqlite3_stmt *stmt = [self _dbPrepareStmt:sql];
@@ -598,6 +624,7 @@ static UIApplication *_YYSharedApplication() {
     return sqlite3_column_int(stmt, 0);
 }
 
+// 总的个数
 - (int)_dbGetTotalItemCount {
     NSString *sql = @"select count(*) from manifest;";
     sqlite3_stmt *stmt = [self _dbPrepareStmt:sql];
@@ -612,24 +639,25 @@ static UIApplication *_YYSharedApplication() {
 
 
 #pragma mark - file
-
+// 写某个路径的数据
 - (BOOL)_fileWriteWithName:(NSString *)filename data:(NSData *)data {
     NSString *path = [_dataPath stringByAppendingPathComponent:filename];
     return [data writeToFile:path atomically:NO];
 }
-
+// 读某个路径的数据
 - (NSData *)_fileReadWithName:(NSString *)filename {
     NSString *path = [_dataPath stringByAppendingPathComponent:filename];
     NSData *data = [NSData dataWithContentsOfFile:path];
     return data;
 }
-
+// 删除某个路径的文件
 - (BOOL)_fileDeleteWithName:(NSString *)filename {
     NSString *path = [_dataPath stringByAppendingPathComponent:filename];
     return [[NSFileManager defaultManager] removeItemAtPath:path error:NULL];
 }
-
+// 把date的文件移动到垃圾站
 - (BOOL)_fileMoveAllToTrash {
+    // 用uuid做后缀来设置垃圾站后缀
     CFUUIDRef uuidRef = CFUUIDCreate(NULL);
     CFStringRef uuid = CFUUIDCreateString(NULL, uuidRef);
     CFRelease(uuidRef);
@@ -647,6 +675,7 @@ static UIApplication *_YYSharedApplication() {
     dispatch_queue_t queue = _trashQueue;
     dispatch_async(queue, ^{
         NSFileManager *manager = [NSFileManager new];
+        // 获取所有路径
         NSArray *directoryContents = [manager contentsOfDirectoryAtPath:trashPath error:NULL];
         for (NSString *path in directoryContents) {
             NSString *fullPath = [trashPath stringByAppendingPathComponent:path];
@@ -662,10 +691,13 @@ static UIApplication *_YYSharedApplication() {
  Delete all files and empty in background.
  Make sure the db is closed.
  */
+// 删除所有文件
 - (void)_reset {
+    // 这部分是数据库的相关文件
     [[NSFileManager defaultManager] removeItemAtPath:[_path stringByAppendingPathComponent:kDBFileName] error:nil];
     [[NSFileManager defaultManager] removeItemAtPath:[_path stringByAppendingPathComponent:kDBShmFileName] error:nil];
     [[NSFileManager defaultManager] removeItemAtPath:[_path stringByAppendingPathComponent:kDBWalFileName] error:nil];
+    // 文件相关的删除
     [self _fileMoveAllToTrash];
     [self _fileEmptyTrashInBackground];
 }
@@ -676,26 +708,33 @@ static UIApplication *_YYSharedApplication() {
     @throw [NSException exceptionWithName:@"YYKVStorage init error" reason:@"Please use the designated initializer and pass the 'path' and 'type'." userInfo:nil];
     return [self initWithPath:@"" type:YYKVStorageTypeFile];
 }
-
+// 创建的方法
 - (instancetype)initWithPath:(NSString *)path type:(YYKVStorageType)type {
+    // 判断路径是否正常 kPathLengthMax = PATH_MAX - 64  减了64是因为需要后面拼接一部分信息做保留用
     if (path.length == 0 || path.length > kPathLengthMax) {
         NSLog(@"YYKVStorage init error: invalid path: [%@].", path);
         return nil;
     }
+    // 判断传入的路径地址是否正常
     if (type > YYKVStorageTypeMixed) {
         NSLog(@"YYKVStorage init error: invalid type: %lu.", (unsigned long)type);
         return nil;
     }
     
     self = [super init];
+    // 路径以及 类型的初始化
     _path = path.copy;
     _type = type;
     _dataPath = [path stringByAppendingPathComponent:kDataDirectoryName];
+    // 垃圾站路径
     _trashPath = [path stringByAppendingPathComponent:kTrashDirectoryName];
+    // 垃圾站对列 同步对联
     _trashQueue = dispatch_queue_create("com.ibireme.cache.disk.trash", DISPATCH_QUEUE_SERIAL);
     _dbPath = [path stringByAppendingPathComponent:kDBFileName];
+    // 设置了默认情况下打印日志
     _errorLogsEnabled = YES;
     NSError *error = nil;
+    // 创建了 path 下面有 data 和trash  这样的文件夹
     if (![[NSFileManager defaultManager] createDirectoryAtPath:path
                                    withIntermediateDirectories:YES
                                                     attributes:nil
@@ -712,23 +751,31 @@ static UIApplication *_YYSharedApplication() {
         return nil;
     }
     
+    // 初始化数据库
     if (![self _dbOpen] || ![self _dbInitialize]) {
+        // 打开或者执行代码 如果其中有失败表示数据库可能损坏了
         // db file may broken...
         [self _dbClose];
         [self _reset]; // rebuild
+        // 清理后再次打开数据库 如果失败则报错
         if (![self _dbOpen] || ![self _dbInitialize]) {
             [self _dbClose];
             NSLog(@"YYKVStorage init error: fail to open sqlite db.");
             return nil;
         }
     }
+    // 清空 垃圾站里的缓存
     [self _fileEmptyTrashInBackground]; // empty the trash if failed at last time
     return self;
 }
 
 - (void)dealloc {
+    // 这个_YYSharedApplication() 拿到的是[UIApplication sharedApplication]
+    //而beginBackgroundTaskWithExpirationHandler 方法是延迟app的关闭 可以把处理放在{}这里没有。
     UIBackgroundTaskIdentifier taskID = [_YYSharedApplication() beginBackgroundTaskWithExpirationHandler:^{}];
+    // 关闭数据库
     [self _dbClose];
+    // 关闭后 可以让App关闭了
     if (taskID != UIBackgroundTaskInvalid) {
         [_YYSharedApplication() endBackgroundTask:taskID];
     }
@@ -739,19 +786,22 @@ static UIApplication *_YYSharedApplication() {
 }
 
 - (BOOL)saveItemWithKey:(NSString *)key value:(NSData *)value {
-    return [self saveItemWithKey:key value:value filename:nil extendedData:nil];
+    return [self saveItemWithKey:key value:value filename:nil extendedData:nil ];
 }
-
+// 存入的核心方法
 - (BOOL)saveItemWithKey:(NSString *)key value:(NSData *)value filename:(NSString *)filename extendedData:(NSData *)extendedData {
+    // 校验数据是否正确
     if (key.length == 0 || value.length == 0) return NO;
     if (_type == YYKVStorageTypeFile && filename.length == 0) {
         return NO;
     }
     
     if (filename.length) {
+        // 文件名存在则写入文件中 失败则展示写入失败
         if (![self _fileWriteWithName:filename data:value]) {
             return NO;
         }
+        // 尝试写入数据库 写入失败则删除相应的之前写入的文件
         if (![self _dbSaveWithKey:key value:value fileName:filename extendedData:extendedData]) {
             [self _fileDeleteWithName:filename];
             return NO;
@@ -759,6 +809,7 @@ static UIApplication *_YYSharedApplication() {
         return YES;
     } else {
         if (_type != YYKVStorageTypeSQLite) {
+            // 如果是混合的 就去取了 文件名
             NSString *filename = [self _dbGetFilenameWithKey:key];
             if (filename) {
                 [self _fileDeleteWithName:filename];
@@ -768,12 +819,14 @@ static UIApplication *_YYSharedApplication() {
     }
 }
 
+// 删除单个缓存
 - (BOOL)removeItemForKey:(NSString *)key {
     if (key.length == 0) return NO;
     switch (_type) {
         case YYKVStorageTypeSQLite: {
             return [self _dbDeleteItemWithKey:key];
         } break;
+        // 下面两种是有文件形式数据的则需要删除数据文件
         case YYKVStorageTypeFile:
         case YYKVStorageTypeMixed: {
             NSString *filename = [self _dbGetFilenameWithKey:key];
@@ -786,6 +839,7 @@ static UIApplication *_YYSharedApplication() {
     }
 }
 
+// 删除多个缓存
 - (BOOL)removeItemForKeys:(NSArray *)keys {
     if (keys.count == 0) return NO;
     switch (_type) {
@@ -804,6 +858,7 @@ static UIApplication *_YYSharedApplication() {
     }
 }
 
+// 删除大于某个值的缓存
 - (BOOL)removeItemsLargerThanSize:(int)size {
     if (size == INT_MAX) return YES;
     if (size <= 0) return [self removeAllItems];
@@ -830,6 +885,7 @@ static UIApplication *_YYSharedApplication() {
     return NO;
 }
 
+// 删除 早于某个值的缓存
 - (BOOL)removeItemsEarlierThanTime:(int)time {
     if (time <= 0) return YES;
     if (time == INT_MAX) return [self removeAllItems];
@@ -856,6 +912,7 @@ static UIApplication *_YYSharedApplication() {
     return NO;
 }
 
+// 删除缓存到某个值
 - (BOOL)removeItemsToFitSize:(int)maxSize {
     if (maxSize == INT_MAX) return YES;
     if (maxSize <= 0) return [self removeAllItems];
@@ -868,6 +925,7 @@ static UIApplication *_YYSharedApplication() {
     BOOL suc = NO;
     do {
         int perCount = 16;
+        // 获取了缓存表 16个 16f个获取了 而不是一次性
         items = [self _dbGetItemSizeInfoOrderByTimeAscWithLimit:perCount];
         for (YYKVStorageItem *item in items) {
             if (total > maxSize) {
@@ -886,6 +944,7 @@ static UIApplication *_YYSharedApplication() {
     return suc;
 }
 
+// 删除缓存到指定个数 处理方式和上面类似
 - (BOOL)removeItemsToFitCount:(int)maxCount {
     if (maxCount == INT_MAX) return YES;
     if (maxCount <= 0) return [self removeAllItems];
@@ -916,6 +975,7 @@ static UIApplication *_YYSharedApplication() {
     return suc;
 }
 
+// 删除全部缓存 直接删除文件
 - (BOOL)removeAllItems {
     if (![self _dbClose]) return NO;
     [self _reset];
@@ -924,6 +984,7 @@ static UIApplication *_YYSharedApplication() {
     return YES;
 }
 
+// 删除所有缓存带进度  一个个删除  感觉这个比较慢啊
 - (void)removeAllItemsWithProgressBlock:(void(^)(int removedCount, int totalCount))progress
                                endBlock:(void(^)(BOOL error))end {
     
@@ -960,7 +1021,9 @@ static UIApplication *_YYSharedApplication() {
     if (key.length == 0) return nil;
     YYKVStorageItem *item = [self _dbGetItemWithKey:key excludeInlineData:NO];
     if (item) {
+        // 更新访问时间
         [self _dbUpdateAccessTimeWithKey:key];
+        // 如果文件名存在 则需要获取文件数据
         if (item.filename) {
             item.value = [self _fileReadWithName:item.filename];
             if (!item.value) {
@@ -971,17 +1034,19 @@ static UIApplication *_YYSharedApplication() {
     }
     return item;
 }
-
+// 这是排除数据的
 - (YYKVStorageItem *)getItemInfoForKey:(NSString *)key {
     if (key.length == 0) return nil;
     YYKVStorageItem *item = [self _dbGetItemWithKey:key excludeInlineData:YES];
     return item;
 }
 
+// 单纯获得数据的逻辑
 - (NSData *)getItemValueForKey:(NSString *)key {
     if (key.length == 0) return nil;
     NSData *value = nil;
     switch (_type) {
+            // 文件存取则直接获取文件名 获取file数据
         case YYKVStorageTypeFile: {
             NSString *filename = [self _dbGetFilenameWithKey:key];
             if (filename) {
@@ -992,9 +1057,11 @@ static UIApplication *_YYSharedApplication() {
                 }
             }
         } break;
+         // 直接从数据库中拿出data
         case YYKVStorageTypeSQLite: {
             value = [self _dbGetValueWithKey:key];
         } break;
+            // 混合的方式根据文件名去做判断
         case YYKVStorageTypeMixed: {
             NSString *filename = [self _dbGetFilenameWithKey:key];
             if (filename) {
@@ -1009,11 +1076,13 @@ static UIApplication *_YYSharedApplication() {
         } break;
     }
     if (value) {
+        // 更新访问日期
         [self _dbUpdateAccessTimeWithKey:key];
     }
     return value;
 }
 
+//如果文件存在 则获取文件数据
 - (NSArray *)getItemForKeys:(NSArray *)keys {
     if (keys.count == 0) return nil;
     NSMutableArray *items = [self _dbGetItemWithKeys:keys excludeInlineData:NO];
@@ -1037,11 +1106,12 @@ static UIApplication *_YYSharedApplication() {
     return items.count ? items : nil;
 }
 
+// 不需要数据的
 - (NSArray *)getItemInfoForKeys:(NSArray *)keys {
     if (keys.count == 0) return nil;
     return [self _dbGetItemWithKeys:keys excludeInlineData:YES];
 }
-
+// 获取相应的值
 - (NSDictionary *)getItemValueForKeys:(NSArray *)keys {
     NSMutableArray *items = (NSMutableArray *)[self getItemForKeys:keys];
     NSMutableDictionary *kv = [NSMutableDictionary new];
@@ -1053,15 +1123,18 @@ static UIApplication *_YYSharedApplication() {
     return kv.count ? kv : nil;
 }
 
+// 某个key值的item是否存在
 - (BOOL)itemExistsForKey:(NSString *)key {
     if (key.length == 0) return NO;
     return [self _dbGetItemCountWithKey:key] > 0;
 }
 
+// 总数
 - (int)getItemsCount {
     return [self _dbGetTotalItemCount];
 }
 
+// 总大小
 - (int)getItemsSize {
     return [self _dbGetTotalItemSize];
 }

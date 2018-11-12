@@ -22,6 +22,7 @@
 static const int extended_data_key;
 
 /// Free disk space in bytes.
+//获取空闲的磁盘空间
 static int64_t _YYDiskSpaceFree() {
     NSError *error = nil;
     NSDictionary *attrs = [[NSFileManager defaultManager] attributesOfFileSystemForPath:NSHomeDirectory() error:&error];
@@ -32,6 +33,7 @@ static int64_t _YYDiskSpaceFree() {
 }
 
 /// String's md5 hash.
+// stringmd5方法
 static NSString *_YYNSStringMD5(NSString *string) {
     if (!string) return nil;
     NSData *data = [string dataUsingEncoding:NSUTF8StringEncoding];
@@ -47,9 +49,11 @@ static NSString *_YYNSStringMD5(NSString *string) {
 }
 
 /// weak reference for all instances
+// 这里实例都是弱引用的
 static NSMapTable *_globalInstances;
 static dispatch_semaphore_t _globalInstancesLock;
 
+// 单利 获取全局对象的单利
 static void _YYDiskCacheInitGlobal() {
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
@@ -58,15 +62,18 @@ static void _YYDiskCacheInitGlobal() {
     });
 }
 
+//获取缓存的方法
 static YYDiskCache *_YYDiskCacheGetGlobal(NSString *path) {
     if (path.length == 0) return nil;
     _YYDiskCacheInitGlobal();
+    // 用GCD的信号量保证线程安全。
     dispatch_semaphore_wait(_globalInstancesLock, DISPATCH_TIME_FOREVER);
     id cache = [_globalInstances objectForKey:path];
     dispatch_semaphore_signal(_globalInstancesLock);
     return cache;
 }
 
+// 设置缓存
 static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
     if (cache.path.length == 0) return;
     _YYDiskCacheInitGlobal();
@@ -83,6 +90,7 @@ static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
     dispatch_queue_t _queue;
 }
 
+// 这是一个循环访问方法，开启后会不断的循环访问、
 - (void)_trimRecursively {
     __weak typeof(self) _self = self;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(_autoTrimInterval * NSEC_PER_SEC)), dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_LOW, 0), ^{
@@ -93,6 +101,7 @@ static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
     });
 }
 
+// 这里是循环清理的方法
 - (void)_trimInBackground {
     __weak typeof(self) _self = self;
     dispatch_async(_queue, ^{
@@ -107,22 +116,27 @@ static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
     });
 }
 
+// 从这里可以看到 其实所有清理的方法都是 YYKVStorage完成的 这里的YYKVStorage 有点想内存中的_YYLinkedMap
 - (void)_trimToCost:(NSUInteger)costLimit {
+    // 判断costLimit 限制值是不是最大值 最大就不需要处理
     if (costLimit >= INT_MAX) return;
     [_kv removeItemsToFitSize:(int)costLimit];
     
 }
 
 - (void)_trimToCount:(NSUInteger)countLimit {
+    // 判断countLimit 的限制值是不是最大值 最大就不需要处理
     if (countLimit >= INT_MAX) return;
     [_kv removeItemsToFitCount:(int)countLimit];
 }
-
+// 删除时间固定点之前的
 - (void)_trimToAge:(NSTimeInterval)ageLimit {
+    // 如果小于0 等于删除全部
     if (ageLimit <= 0) {
         [_kv removeAllItems];
         return;
     }
+    // 获取当前时间
     long timestamp = time(NULL);
     if (timestamp <= ageLimit) return;
     long age = timestamp - ageLimit;
@@ -130,6 +144,7 @@ static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
     [_kv removeItemsEarlierThanTime:(int)age];
 }
 
+// 给磁盘留下多少缓存，清理多出的部分，这里做了一层逻辑判断最后转到了 _trimToCost 方法中。
 - (void)_trimToFreeDiskSpace:(NSUInteger)targetFreeDiskSpace {
     if (targetFreeDiskSpace == 0) return;
     int64_t totalBytes = [_kv getItemsSize];
@@ -176,9 +191,12 @@ static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
     self = [super init];
     if (!self) return nil;
     
+    // 看看有没有缓存，如果存在则返回
     YYDiskCache *globalCache = _YYDiskCacheGetGlobal(path);
     if (globalCache) return globalCache;
     
+    // 这里判断了 threshold 的值 如果等于0 就是表示都以文件的方式存储
+    // 如果是最大值 表示都以数据库的方式来存储，否则是混合存储方式
     YYKVStorageType type;
     if (threshold == 0) {
         type = YYKVStorageTypeFile;
@@ -187,10 +205,11 @@ static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
     } else {
         type = YYKVStorageTypeMixed;
     }
-    
+    // 创建了 threshold 类
     YYKVStorage *kv = [[YYKVStorage alloc] initWithPath:path type:type];
     if (!kv) return nil;
     
+    // 初始化一些数据
     _kv = kv;
     _path = path;
     _lock = dispatch_semaphore_create(1);
@@ -202,13 +221,16 @@ static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
     _freeDiskSpaceLimit = 0;
     _autoTrimInterval = 60;
     
+    // 开启循环检测
     [self _trimRecursively];
     _YYDiskCacheSetGlobal(self);
     
+    // APP关闭的通知 _kv 设置成nil
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(_appWillBeTerminated) name:UIApplicationWillTerminateNotification object:nil];
     return self;
 }
 
+// 判断是不是包含某个缓存
 - (BOOL)containsObjectForKey:(NSString *)key {
     if (!key) return NO;
     Lock();
@@ -226,7 +248,7 @@ static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
         block(key, contains);
     });
 }
-
+// 查询某个缓存 归档的方式。
 - (id<NSCoding>)objectForKey:(NSString *)key {
     if (!key) return nil;
     Lock();
@@ -235,6 +257,7 @@ static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
     if (!item.value) return nil;
     
     id object = nil;
+    // 反归档方式  可以自定义实现
     if (_customUnarchiveBlock) {
         object = _customUnarchiveBlock(item.value);
     } else {
@@ -251,6 +274,7 @@ static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
     return object;
 }
 
+// 这个获取有异步方法只是放到异步去执行而已
 - (void)objectForKey:(NSString *)key withBlock:(void(^)(NSString *key, id<NSCoding> object))block {
     if (!block) return;
     __weak typeof(self) _self = self;
@@ -261,6 +285,7 @@ static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
     });
 }
 
+// 存缓存信息。
 - (void)setObject:(id<NSCoding>)object forKey:(NSString *)key {
     if (!key) return;
     if (!object) {
@@ -268,8 +293,10 @@ static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
         return;
     }
     
+    // 获取额外信息
     NSData *extendedData = [YYDiskCache getExtendedDataFromObject:object];
     NSData *value = nil;
+    // 序列化 也可以自定义序列化
     if (_customArchiveBlock) {
         value = _customArchiveBlock(object);
     } else {
@@ -281,6 +308,7 @@ static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
         }
     }
     if (!value) return;
+    // 这里得出了一个文件名 然后给YYKVStorage存储
     NSString *filename = nil;
     if (_kv.type != YYKVStorageTypeSQLite) {
         if (value.length > _inlineThreshold) {
@@ -302,6 +330,7 @@ static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
     });
 }
 
+// 删除文件 也是通过YYKVStorage删除的
 - (void)removeObjectForKey:(NSString *)key {
     if (!key) return;
     Lock();
@@ -318,6 +347,7 @@ static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
     });
 }
 
+// 删除全部文件
 - (void)removeAllObjects {
     Lock();
     [_kv removeAllItems];
@@ -348,6 +378,7 @@ static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
     });
 }
 
+// 总数
 - (NSInteger)totalCount {
     Lock();
     int count = [_kv getItemsCount];
@@ -365,6 +396,7 @@ static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
     });
 }
 
+// 总内存
 - (NSInteger)totalCost {
     Lock();
     int count = [_kv getItemsSize];
@@ -382,12 +414,14 @@ static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
     });
 }
 
+// 删除到指定个数
 - (void)trimToCount:(NSUInteger)count {
     Lock();
     [self _trimToCount:count];
     Unlock();
 }
 
+// 删除到指定量 
 - (void)trimToCount:(NSUInteger)count withBlock:(void(^)(void))block {
     __weak typeof(self) _self = self;
     dispatch_async(_queue, ^{
@@ -397,6 +431,7 @@ static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
     });
 }
 
+// 下面的清缓存方法全部掉了上面的私有方法  但是加了锁 GCD的信号量锁
 - (void)trimToCost:(NSUInteger)cost {
     Lock();
     [self _trimToCost:cost];
@@ -427,6 +462,7 @@ static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
     });
 }
 
+// 给所有的objct 都绑定了一个额外的数据 暂时不知 干嘛用
 + (NSData *)getExtendedDataFromObject:(id)object {
     if (!object) return nil;
     return (NSData *)objc_getAssociatedObject(object, &extended_data_key);
@@ -442,6 +478,7 @@ static void _YYDiskCacheSetGlobal(YYDiskCache *cache) {
     else return [NSString stringWithFormat:@"<%@: %p> (%@)", self.class, self, _path];
 }
 
+//设置打印日志
 - (BOOL)errorLogsEnabled {
     Lock();
     BOOL enabled = _kv.errorLogsEnabled;

@@ -50,6 +50,7 @@ NS_ASSUME_NONNULL_BEGIN
  
  The default value is 20480 (20KB).
  */
+// 这个是一个阈值，如果s文件大小大于这个值那么对象会存储为文件，否则对象将存储在sqlite中。
 @property (readonly) NSUInteger inlineThreshold;
 
 /**
@@ -77,6 +78,7 @@ NS_ASSUME_NONNULL_BEGIN
  
  The default value is nil.
  */
+// 当需要将对象保存为文件时，将调用此块来生成指定密钥的文件名。如果块为nil，缓存使用md5(键)作为默认的文件名。
 @property (nullable, copy) NSString *(^customFileNameBlock)(NSString *key);
 
 
@@ -93,6 +95,7 @@ NS_ASSUME_NONNULL_BEGIN
  This is not a strict limit — if the cache goes over the limit, some objects in the
  cache could be evicted later in background queue.
  */
+// 内存个数限制
 @property NSUInteger countLimit;
 
 /**
@@ -102,6 +105,7 @@ NS_ASSUME_NONNULL_BEGIN
  This is not a strict limit — if the cache goes over the limit, some objects in the
  cache could be evicted later in background queue.
  */
+// 内存大小限制
 @property NSUInteger costLimit;
 
 /**
@@ -111,6 +115,7 @@ NS_ASSUME_NONNULL_BEGIN
  This is not a strict limit — if an object goes over the limit, the objects could
  be evicted later in background queue.
  */
+// 时间限制
 @property NSTimeInterval ageLimit;
 
 /**
@@ -121,6 +126,7 @@ NS_ASSUME_NONNULL_BEGIN
  to free some disk space. This is not a strict limit—if the free disk space goes
  over the limit, the objects could be evicted later in background queue.
  */
+// 磁盘空间保留多少的限制清理，如果空闲磁盘空间低于此值，缓存将删除对象
 @property NSUInteger freeDiskSpaceLimit;
 
 /**
@@ -129,6 +135,7 @@ NS_ASSUME_NONNULL_BEGIN
  @discussion The cache holds an internal timer to check whether the cache reaches
  its limits, and if the limit is reached, it begins to evict objects.
  */
+// 清理超过上面限制的缓存的时间，默认60秒一次
 @property NSTimeInterval autoTrimInterval;
 
 /**
@@ -140,6 +147,7 @@ NS_ASSUME_NONNULL_BEGIN
 ///=============================================================================
 /// @name Initializer
 ///=============================================================================
+// 这z两个方法被禁用了
 - (instancetype)init UNAVAILABLE_ATTRIBUTE;
 + (instancetype)new UNAVAILABLE_ATTRIBUTE;
 
@@ -174,6 +182,7 @@ NS_ASSUME_NONNULL_BEGIN
  @warning If the cache instance for the specified path already exists in memory,
      this method will return it directly, instead of creating a new instance.
  */
+// NS_DESIGNATED_INITIALIZER这个表示 最终会调用这个方法初始化
 - (nullable instancetype)initWithPath:(NSString *)path
                       inlineThreshold:(NSUInteger)threshold NS_DESIGNATED_INITIALIZER;
 
@@ -190,6 +199,7 @@ NS_ASSUME_NONNULL_BEGIN
  @param key A string identifying the value. If nil, just return NO.
  @return Whether the key is in cache.
  */
+// 是否包含某个 缓存
 - (BOOL)containsObjectForKey:(NSString *)key;
 
 /**
@@ -200,6 +210,7 @@ NS_ASSUME_NONNULL_BEGIN
  @param key   A string identifying the value. If nil, just return NO.
  @param block A block which will be invoked in background queue when finished.
  */
+//  block 回调方式
 - (void)containsObjectForKey:(NSString *)key withBlock:(void(^)(NSString *key, BOOL contains))block;
 
 /**
@@ -209,6 +220,7 @@ NS_ASSUME_NONNULL_BEGIN
  @param key A string identifying the value. If nil, just return nil.
  @return The value associated with key, or nil if no value is associated with key.
  */
+// 获取某个缓存
 - (nullable id<NSCoding>)objectForKey:(NSString *)key;
 
 /**
@@ -219,6 +231,7 @@ NS_ASSUME_NONNULL_BEGIN
  @param key A string identifying the value. If nil, just return nil.
  @param block A block which will be invoked in background queue when finished.
  */
+// 获取某个缓存 block形式回调
 - (void)objectForKey:(NSString *)key withBlock:(void(^)(NSString *key, id<NSCoding> _Nullable object))block;
 
 /**
@@ -228,6 +241,7 @@ NS_ASSUME_NONNULL_BEGIN
  @param object The object to be stored in the cache. If nil, it calls `removeObjectForKey:`.
  @param key    The key with which to associate the value. If nil, this method has no effect.
  */
+// 设置某个缓存
 - (void)setObject:(nullable id<NSCoding>)object forKey:(NSString *)key;
 
 /**
@@ -238,6 +252,7 @@ NS_ASSUME_NONNULL_BEGIN
  @param object The object to be stored in the cache. If nil, it calls `removeObjectForKey:`.
  @param block  A block which will be invoked in background queue when finished.
  */
+// 设置某个缓存 有回调版本
 - (void)setObject:(nullable id<NSCoding>)object forKey:(NSString *)key withBlock:(void(^)(void))block;
 
 /**
@@ -246,6 +261,7 @@ NS_ASSUME_NONNULL_BEGIN
  
  @param key The key identifying the value to be removed. If nil, this method has no effect.
  */
+// 删除某个缓存
 - (void)removeObjectForKey:(NSString *)key;
 
 /**
@@ -256,12 +272,14 @@ NS_ASSUME_NONNULL_BEGIN
  @param key The key identifying the value to be removed. If nil, this method has no effect.
  @param block  A block which will be invoked in background queue when finished.
  */
+// 删除某个缓存 回调版本
 - (void)removeObjectForKey:(NSString *)key withBlock:(void(^)(NSString *key))block;
 
 /**
  Empties the cache.
  This method may blocks the calling thread until file delete finished.
  */
+// 删除所有缓存
 - (void)removeAllObjects;
 
 /**
@@ -271,6 +289,7 @@ NS_ASSUME_NONNULL_BEGIN
  
  @param block  A block which will be invoked in background queue when finished.
  */
+//删除所有缓存有回调版本
 - (void)removeAllObjectsWithBlock:(void(^)(void))block;
 
 /**
@@ -281,6 +300,7 @@ NS_ASSUME_NONNULL_BEGIN
  @param progress This block will be invoked during removing, pass nil to ignore.
  @param end      This block will be invoked at the end, pass nil to ignore.
  */
+// 删除所有缓存有进度版本
 - (void)removeAllObjectsWithProgressBlock:(nullable void(^)(int removedCount, int totalCount))progress
                                  endBlock:(nullable void(^)(BOOL error))end;
 
@@ -291,6 +311,7 @@ NS_ASSUME_NONNULL_BEGIN
  
  @return The total objects count.
  */
+// 获取总个数
 - (NSInteger)totalCount;
 
 /**
@@ -300,6 +321,7 @@ NS_ASSUME_NONNULL_BEGIN
  
  @param block  A block which will be invoked in background queue when finished.
  */
+// 获取总个数block 这样就不会堵塞线程了
 - (void)totalCountWithBlock:(void(^)(NSInteger totalCount))block;
 
 /**
@@ -308,6 +330,7 @@ NS_ASSUME_NONNULL_BEGIN
  
  @return The total objects cost in bytes.
  */
+// 缓存总量
 - (NSInteger)totalCost;
 
 /**
@@ -317,9 +340,11 @@ NS_ASSUME_NONNULL_BEGIN
  
  @param block  A block which will be invoked in background queue when finished.
  */
+// 缓存总量，有回调版本
 - (void)totalCostWithBlock:(void(^)(NSInteger totalCost))block;
 
 
+// 删除到指定缓存要求的方法都有直接调用与block回到的方式
 #pragma mark - Trim
 ///=============================================================================
 /// @name Trim
