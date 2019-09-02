@@ -17,3 +17,4 @@
 6.baseBride上层有wkwebview以及uiwebview的bridge,因为代理让bride实现了，所以Bride有个设置代理的方式，如果存在会在调用外层方法，所以外层需要使用webview的代理需要在bride上设置。
 
 其他详情请看源码注释，另外因为UIWebView渐渐被淘汰了 所以这里没有写注释，原理是一样的
+
