@@ -41,7 +41,7 @@ NSString * WebViewJavascriptBridge_js() {
         // 处理来自OC的消息
 		_handleMessageFromObjC: _handleMessageFromObjC
 	};
-
+    // iframe 对象用来发送URL
 	var messagingIframe;
     // 储存消息列表（发送给oc的消息）
 	var sendMessageQueue = [];
@@ -121,10 +121,10 @@ NSString * WebViewJavascriptBridge_js() {
                 // 首先有没有需要回调的方法 如果有就设置回调
 				if (message.callbackId) {
 					var callbackResponseId = message.callbackId;
-					responseCallback = function(responseData) {
+                    responseCallback = function(responseData) {
                         // 其实回调就是通过 _doSend 像oc 发送消息
-						_doSend({ handlerName:message.handlerName, responseId:callbackResponseId, responseData:responseData });
-					};
+                        _doSend({ handlerName:message.handlerName, responseId:callbackResponseId, responseData:responseData });
+                    };
 				}
 				
                 // hander 不存在说明 是有错误的 messageHandlers 存储了所有注册的方法
@@ -152,7 +152,7 @@ NSString * WebViewJavascriptBridge_js() {
 	registerHandler("_disableJavascriptAlertBoxSafetyTimeout", disableJavscriptAlertBoxSafetyTimeout);
 	
 	setTimeout(_callWVJBCallbacks, 0);
-    // 暂时不明这是干啥用的
+    // WVJBCallbacks这个是用于暂存在未初始化时候的一些调用。
 	function _callWVJBCallbacks() {
 		var callbacks = window.WVJBCallbacks;
 		delete window.WVJBCallbacks;

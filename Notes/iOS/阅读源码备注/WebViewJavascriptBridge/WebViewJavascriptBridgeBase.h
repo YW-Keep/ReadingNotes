@@ -33,14 +33,14 @@ typedef NSDictionary WVJBMessage;
 @property (strong, nonatomic) NSMutableArray* startupMessageQueue;
 // 用来存放回调的
 @property (strong, nonatomic) NSMutableDictionary* responseCallbacks;
-// 用来存放方法名
+// 用来存放注册方法
 @property (strong, nonatomic) NSMutableDictionary* messageHandlers;
-// 这个暂时不知道干啥用的。
+// 这个暂时不知道干啥用的（感觉是冗余）。
 @property (strong, nonatomic) WVJBHandler messageHandler;
 
 // 启用日志
 + (void)enableLogging;
-// 设置日志最大长度
+// 设置日志输出最大长度
 + (void)setLogMaxLength:(int)length;
 // 重置
 - (void)reset;

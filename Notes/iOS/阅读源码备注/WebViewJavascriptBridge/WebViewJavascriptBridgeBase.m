@@ -212,14 +212,17 @@ static int logMaxLength = 500;
     }
 }
 
+// 消息转string的方法
 - (NSString *)_serializeMessage:(id)message pretty:(BOOL)pretty{
     return [[NSString alloc] initWithData:[NSJSONSerialization dataWithJSONObject:message options:(NSJSONWritingOptions)(pretty ? NSJSONWritingPrettyPrinted : 0) error:nil] encoding:NSUTF8StringEncoding];
 }
 
+// 解析的方法
 - (NSArray*)_deserializeMessageJSON:(NSString *)messageJSON {
     return [NSJSONSerialization JSONObjectWithData:[messageJSON dataUsingEncoding:NSUTF8StringEncoding] options:NSJSONReadingAllowFragments error:nil];
 }
 
+//打印日志的方法
 - (void)_log:(NSString *)action json:(id)json {
     if (!logging) { return; }
     if (![json isKindOfClass:[NSString class]]) {
