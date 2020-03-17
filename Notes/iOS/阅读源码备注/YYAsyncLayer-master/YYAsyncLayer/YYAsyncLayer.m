@@ -18,6 +18,7 @@
 #import <libkern/OSAtomic.h>
 #endif
 
+// 获取线程队列，如果有YYDispatchQueuePool 则用了YYDispatchQueuePool内部的队列，没有则创建全局队列
 /// Global display queue, used for content rendering.
 static dispatch_queue_t YYAsyncLayerGetDisplayQueue() {
 #ifdef YYDispatchQueuePool_h
@@ -90,6 +91,7 @@ static dispatch_queue_t YYAsyncLayerGetReleaseQueue() {
     return self;
 }
 
+// 在释放和需要绘制的时候会调用累加器从来其实取消了之前的异步绘制任务（通过isCancelled）已经取消了
 - (void)dealloc {
     [_sentinel increase];
 }
@@ -145,9 +147,30 @@ static dispatch_queue_t YYAsyncLayerGetReleaseQueue() {
                 CGColorRelease(backgroundColor);
                 return;
             }
+            /**
+              系统会维护一个CGContextRef的栈，UIGraphicsGetCurrentContext()会取出栈顶的context，所以在setFrame调用UIGraphicsGetCurrentContext(), 但获得的上下文总是nil。只能在drawRect里调用UIGraphicsGetCurrentContext()，
+              因为在drawRect之前，系统会往栈里面压入一个valid的CGContextRef，除非自己去维护一个CGContextRef，否则不应该在其他地方取CGContextRef。
+              那如果就像在drawRect之外获得context怎么办？那只能自己创建位图上下文了
+              */
+              
+              /**
+              UIGraphicsBeginImageContext这个方法也可以来获取图形上下文进行绘制的话就会出现你绘制出来的图片相当的模糊，其实原因很简单
+              因为 UIGraphicsBeginImageContext(size) = UIGraphicsBeginImageContextWithOptions(size,NO,1.0)
+              */
+              
+              /**
+               创建一个图片类型的上下文。调用UIGraphicsBeginImageContextWithOptions函数就可获得用来处理图片的图形上下文。利用该上下文，你就可以在其上进行绘图，并生成图片
+               
+               第一个参数表示所要创建的图片的尺寸
+               第二个参数表示这个图层是否完全透明，一般情况下最好设置为YES，这样可以让图层在渲染的时候效率更高
+               第三个参数指定生成图片的缩放因子，这个缩放因子与UIImage的scale属性所指的含义是一致的。传入0则表示让图片的缩放因子根据屏幕的分辨率而变化，所以我们得到的图片不管是在单分辨率还是视网膜屏上看起来都会很好
+               */
             UIGraphicsBeginImageContextWithOptions(size, opaque, scale);
             CGContextRef context = UIGraphicsGetCurrentContext();
             if (opaque) {
+                /**
+                使用Quartz时涉及到一个图形上下文，其中图形上下文中包含一个保存过的图形状态堆栈。在Quartz创建图形上下文时，该堆栈是空的。CGContextSaveGState函数的作用是将当前图形状态推入堆栈。之后，您对图形状态所做的修改会影响随后的描画操作，但不影响存储在堆栈中的拷贝。在修改完成后，您可以通过CGContextRestoreGState函数把堆栈顶部的状态弹出，返回到之前的图形状态。这种推入和弹出的方式是回到之前图形状态的快速方法，避免逐个撤消所有的状态修改；这也是将某些状态（比如裁剪路径）恢复到原有设置的唯一方式。
+                */
                 CGContextSaveGState(context); {
                     if (!backgroundColor || CGColorGetAlpha(backgroundColor) < 1) {
                         CGContextSetFillColorWithColor(context, [UIColor whiteColor].CGColor);
